@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Camera, List, Home as HomeIcon, Activity, Sparkles, Upload, Image as ImageIcon, BarChart3, X } from 'lucide-react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { Camera, Activity, Sparkles, Upload, Image as ImageIcon, BarChart3, X } from 'lucide-react'
 import ReceiptUpload from './components/ReceiptUpload'
 import ReceiptDisplay from './components/ReceiptDisplay'
 import CameraCapture from './components/CameraCapture'
@@ -12,12 +10,16 @@ import UsageDashboard from './components/UsageDashboard'
 import { ReceiptData } from './types'
 
 // 和風ナビゲーションコンポーネント
-const Navigation = () => {
-  const pathname = usePathname()
-
+const Navigation = ({ activeTab, setActiveTab, healthStatus }: { 
+  activeTab: TabType, 
+  setActiveTab: (tab: TabType) => void,
+  healthStatus: string 
+}) => {
   const navItems = [
-    { path: '/', icon: HomeIcon, label: 'ホーム' },
-    { path: '/receipts', icon: List, label: '履歴' },
+    { id: 'upload' as TabType, label: 'アップロード', icon: Upload },
+    { id: 'camera' as TabType, label: '撮影', icon: Camera },
+    { id: 'gallery' as TabType, label: 'ギャラリー', icon: ImageIcon },
+    { id: 'dashboard' as TabType, label: 'ダッシュボード', icon: BarChart3 },
   ]
 
   return (
@@ -37,26 +39,46 @@ const Navigation = () => {
             </div>
           </div>
           
-          <div className="flex space-x-1">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.path
-              
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                    isActive
-                      ? 'wa-gradient-primary text-washi-50 wa-shadow-medium'
-                      : 'text-sumi-600 hover:text-sumi-800 hover:bg-washi-100/80'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="text-sm tracking-wide">{item.label}</span>
-                </Link>
-              )
-            })}
+          {/* タブナビゲーション */}
+          {activeTab !== 'detail' && (
+            <div className="flex space-x-1">
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const isActive = activeTab === item.id
+                
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                      isActive
+                        ? 'wa-gradient-primary text-washi-50 wa-shadow-medium'
+                        : 'text-sumi-600 hover:text-sumi-800 hover:bg-washi-100/80'
+                    }`}
+                  >
+                    <Icon size={18} />
+                    <span className="text-sm tracking-wide">{item.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          
+          {/* ステータスインジケーター */}
+          <div className="flex items-center space-x-3">
+            <div className={`w-3 h-3 rounded-full ${
+              healthStatus === 'healthy' ? 'bg-matcha-500 animate-pulse' : 
+              healthStatus === 'error' ? 'bg-sakura-500' : 'bg-gold-500 animate-pulse'
+            }`} />
+            <Activity size={16} className="text-sumi-500" />
+            <span className="text-sm text-sumi-600 font-medium">システム:</span>
+            <span className={`text-sm font-bold tracking-wide ${
+              healthStatus === 'healthy' ? 'text-matcha-600' : 
+              healthStatus === 'error' ? 'text-sakura-600' : 'text-gold-600'
+            }`}>
+              {healthStatus === 'healthy' ? '正常' : 
+               healthStatus === 'error' ? '停止中' : '確認中...'}
+            </span>
           </div>
         </div>
       </div>
@@ -64,28 +86,7 @@ const Navigation = () => {
   )
 }
 
-// 和風ステータスインジケーター
-const StatusIndicator = ({ status }: { status: string }) => (
-  <div className="flex items-center justify-center">
-    <div className="card px-6 py-3 card-hover">
-      <div className="flex items-center space-x-3 text-sm">
-        <div className={`w-3 h-3 rounded-full ${
-          status === 'healthy' ? 'bg-matcha-500 animate-pulse' : 
-          status === 'error' ? 'bg-sakura-500' : 'bg-gold-500 animate-pulse'
-        }`} />
-        <Activity size={16} className="text-sumi-500" />
-        <span className="text-sumi-600 font-medium">システム状態:</span>
-        <span className={`font-bold tracking-wide ${
-          status === 'healthy' ? 'text-matcha-600' : 
-          status === 'error' ? 'text-sakura-600' : 'text-gold-600'
-        }`}>
-          {status === 'healthy' ? '正常' : 
-           status === 'error' ? '停止中' : '確認中...'}
-        </span>
-      </div>
-    </div>
-  </div>
-)
+
 
 type TabType = 'upload' | 'camera' | 'gallery' | 'dashboard' | 'detail'
 
@@ -175,12 +176,7 @@ export default function Home() {
     setReceipts(prev => prev.filter(r => r.id !== receiptId))
   }
 
-  const tabs = [
-    { id: 'upload' as TabType, label: 'アップロード', icon: Upload },
-    { id: 'camera' as TabType, label: '撮影', icon: Camera },
-    { id: 'gallery' as TabType, label: 'ギャラリー', icon: ImageIcon },
-    { id: 'dashboard' as TabType, label: 'ダッシュボード', icon: BarChart3 },
-  ]
+
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -273,39 +269,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      <Navigation />
+      <Navigation 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        healthStatus={healthStatus} 
+      />
       
       <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="space-y-8">
-          <StatusIndicator status={healthStatus} />
-
-          {/* 和風タブナビゲーション */}
-          {activeTab !== 'detail' && (
-            <div className="card p-3">
-              <div className="flex space-x-2">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon
-                  const isActive = activeTab === tab.id
-                  
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center space-x-3 px-6 py-4 rounded-xl font-medium transition-all duration-300 ${
-                        isActive
-                          ? 'wa-gradient-primary text-washi-50 wa-shadow-medium'
-                          : 'text-sumi-600 hover:text-sumi-800 hover:bg-washi-100/80'
-                      }`}
-                    >
-                      <Icon size={20} />
-                      <span className="tracking-wide">{tab.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
           {/* タブコンテンツ */}
           <div className="animate-fade-in">
             {renderTabContent()}
