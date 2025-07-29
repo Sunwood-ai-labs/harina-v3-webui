@@ -16,21 +16,27 @@ const modelOptions = [
     label: 'Gemini', 
     icon: Sparkles, 
     description: '高精度・高速処理',
-    color: 'text-blue-600'
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-50',
+    borderColor: 'border-indigo-200'
   },
   { 
     value: 'gpt-4o', 
     label: 'GPT-4o', 
     icon: Brain, 
     description: '詳細な分析',
-    color: 'text-emerald-600'
+    color: 'text-matcha-600',
+    bgColor: 'bg-matcha-50',
+    borderColor: 'border-matcha-200'
   },
   { 
     value: 'claude', 
     label: 'Claude', 
     icon: Zap, 
     description: '正確な認識',
-    color: 'text-purple-600'
+    color: 'text-sakura-600',
+    bgColor: 'bg-sakura-50',
+    borderColor: 'border-sakura-200'
   },
 ]
 
@@ -94,15 +100,15 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
   const selectedModelData = modelOptions.find(m => m.value === selectedModel)
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8">
+    <div className="max-w-3xl mx-auto space-y-12">
       {/* モデル選択 */}
-      <div className="space-y-4">
-        <div className="text-center">
-          <h3 className="text-lg font-semibold text-slate-800 mb-2">AIモデルを選択</h3>
-          <p className="text-sm text-slate-600">用途に応じて最適なAIモデルをお選びください</p>
+      <div className="space-y-6">
+        <div className="text-center space-y-3">
+          <h3 className="text-2xl font-bold wa-text-gradient">AIモデルを選択</h3>
+          <p className="text-sumi-600 leading-relaxed">用途に応じて最適なAIモデルをお選びください</p>
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {modelOptions.map((model) => {
             const Icon = model.icon
             const isSelected = selectedModel === model.value
@@ -112,20 +118,22 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
                 key={model.value}
                 onClick={() => setSelectedModel(model.value)}
                 disabled={isProcessing}
-                className={`card p-4 text-left transition-all duration-200 ${
+                className={`card p-6 text-left transition-all duration-300 ${
                   isSelected 
-                    ? 'ring-2 ring-blue-500 bg-blue-50/50 border-blue-200' 
+                    ? `ring-2 ${model.borderColor.replace('border-', 'ring-')} ${model.bgColor} border-transparent wa-shadow-medium` 
                     : 'card-hover'
                 } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
-                <div className="flex items-start space-x-3">
-                  <Icon className={`${model.color} mt-0.5`} size={20} />
+                <div className="flex items-start space-x-4">
+                  <div className={`p-3 ${model.bgColor} rounded-xl`}>
+                    <Icon className={`${model.color}`} size={24} />
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-900">{model.label}</p>
-                    <p className="text-xs text-slate-500 mt-1">{model.description}</p>
+                    <p className="font-bold text-sumi-800 text-lg tracking-wide">{model.label}</p>
+                    <p className="text-sm text-sumi-500 mt-2 leading-relaxed">{model.description}</p>
                   </div>
                   {isSelected && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full" />
+                    <div className={`w-3 h-3 ${model.color.replace('text-', 'bg-')} rounded-full animate-pulse`} />
                   )}
                 </div>
               </button>
@@ -137,56 +145,58 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
       {/* ファイルアップロード */}
       <div
         {...getRootProps()}
-        className={`upload-zone p-12 text-center cursor-pointer ${
+        className={`upload-zone p-16 text-center cursor-pointer ${
           isDragActive ? 'upload-zone-active' : ''
         } ${isProcessing ? 'pointer-events-none opacity-60' : ''}`}
       >
         <input {...getInputProps()} />
         
         {isProcessing ? (
-          <div className="space-y-6 animate-scale-in">
+          <div className="space-y-8 animate-scale-in">
             <div className="relative">
-              <Loader2 className="mx-auto h-16 w-16 text-blue-500 animate-spin" />
+              <Loader2 className="mx-auto h-20 w-20 text-indigo-500 animate-spin" />
               <div className="absolute inset-0 flex items-center justify-center">
                 {selectedModelData && (
-                  <selectedModelData.icon className={`${selectedModelData.color} animate-pulse`} size={24} />
+                  <selectedModelData.icon className={`${selectedModelData.color} animate-pulse`} size={28} />
                 )}
               </div>
             </div>
-            <div>
-              <p className="text-xl font-semibold text-slate-900 mb-2">処理中...</p>
-              <p className="text-slate-600">
+            <div className="space-y-4">
+              <p className="text-2xl font-bold wa-text-gradient">解析中...</p>
+              <p className="text-sumi-600 text-lg leading-relaxed">
                 {selectedModelData?.label}でレシートを解析しています
               </p>
-              <div className="mt-4 w-48 mx-auto bg-slate-200 rounded-full h-1.5">
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-500 h-1.5 rounded-full animate-pulse" style={{width: '60%'}} />
+              <div className="mt-6 w-64 mx-auto bg-washi-300 rounded-full h-2">
+                <div className="wa-gradient-primary h-2 rounded-full animate-pulse" style={{width: '60%'}} />
               </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-8 animate-fade-in">
             <div className="relative">
-              <Upload className={`mx-auto h-16 w-16 transition-colors duration-200 ${
-                isDragActive ? 'text-blue-500 animate-float' : 'text-slate-400'
+              <Upload className={`mx-auto h-20 w-20 transition-colors duration-300 ${
+                isDragActive ? 'text-matcha-500 animate-float' : 'text-sumi-400'
               }`} />
               {isDragActive && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-20 h-20 border-2 border-blue-500 border-dashed rounded-full animate-ping" />
+                  <div className="w-24 h-24 border-2 border-matcha-500 border-dashed rounded-full animate-ping" />
                 </div>
               )}
             </div>
             
-            <div>
-              <p className="text-xl font-semibold text-slate-900 mb-2">
-                {isDragActive ? 'ファイルをドロップしてください' : 'レシート画像をアップロード'}
-              </p>
-              <p className="text-slate-600 mb-4">
-                ドラッグ&ドロップまたはクリックしてファイルを選択
-              </p>
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <p className="text-2xl font-bold wa-text-gradient">
+                  {isDragActive ? 'ファイルをドロップしてください' : 'レシート画像をアップロード'}
+                </p>
+                <p className="text-sumi-600 text-lg leading-relaxed">
+                  ドラッグ&ドロップまたはクリックしてファイルを選択
+                </p>
+              </div>
               
-              <div className="inline-flex items-center space-x-2 px-4 py-2 bg-slate-100 rounded-full text-sm text-slate-600">
-                <span>対応形式:</span>
-                <span className="font-medium">JPEG, PNG, GIF, BMP</span>
+              <div className="inline-flex items-center space-x-3 px-6 py-3 bg-washi-200/60 rounded-2xl text-sm text-sumi-600">
+                <span className="font-medium">対応形式:</span>
+                <span className="font-bold tracking-wide">JPEG, PNG, GIF, BMP</span>
               </div>
             </div>
           </div>
