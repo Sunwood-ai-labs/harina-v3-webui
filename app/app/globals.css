@@ -4,41 +4,78 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-washi-300;
   }
   
   body {
-    @apply bg-gradient-to-br from-slate-50 to-blue-50/30 text-slate-900 antialiased;
+    @apply bg-gradient-to-br from-washi-50 via-washi-100 to-matcha-50/20 text-sumi-800 antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: 'Hiragino Sans', 'Yu Gothic UI', 'Meiryo UI', sans-serif;
   }
 }
 
 @layer components {
+  /* 和紙のような質感のカード */
   .card {
-    @apply bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-xl shadow-sm;
+    @apply bg-washi-50/90 backdrop-blur-sm border border-washi-300/80 rounded-2xl shadow-sm;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.02);
   }
   
   .card-hover {
-    @apply transition-all duration-200 hover:shadow-md hover:border-slate-300/60;
+    @apply transition-all duration-300 hover:shadow-lg hover:border-washi-400/80 hover:bg-washi-50;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }
   
+  /* 和風プライマリボタン */
   .btn-primary {
-    @apply bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/25 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2;
+    @apply bg-gradient-to-r from-indigo-600 to-indigo-700 text-washi-50 px-8 py-3 rounded-xl font-medium transition-all duration-300 hover:from-indigo-700 hover:to-indigo-800 hover:shadow-lg hover:shadow-indigo-500/20 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:ring-offset-2 focus:ring-offset-washi-50;
+    letter-spacing: 0.025em;
   }
   
+  /* セカンダリボタン */
   .btn-secondary {
-    @apply bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-700 px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:bg-white hover:border-slate-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500/50 focus:ring-offset-2;
+    @apply bg-washi-50/90 backdrop-blur-sm border border-washi-300 text-sumi-700 px-8 py-3 rounded-xl font-medium transition-all duration-300 hover:bg-washi-100 hover:border-washi-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-sumi-500/30 focus:ring-offset-2 focus:ring-offset-washi-50;
+    letter-spacing: 0.025em;
   }
   
+  /* 和風インプットフィールド */
   .input-field {
-    @apply bg-white/80 backdrop-blur-sm border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder-slate-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50;
+    @apply bg-washi-50/90 backdrop-blur-sm border border-washi-300 rounded-xl px-4 py-3 text-sumi-800 placeholder-sumi-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500/50 focus:bg-washi-50;
   }
   
+  /* アップロードゾーン */
   .upload-zone {
-    @apply border-2 border-dashed border-slate-300 rounded-xl bg-white/40 backdrop-blur-sm transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/50;
+    @apply border-2 border-dashed border-washi-400 rounded-2xl bg-washi-50/60 backdrop-blur-sm transition-all duration-400 hover:border-matcha-400 hover:bg-matcha-50/30;
   }
   
   .upload-zone-active {
-    @apply border-blue-500 bg-blue-50/80 shadow-lg shadow-blue-500/10;
+    @apply border-matcha-500 bg-matcha-50/60 shadow-xl shadow-matcha-500/10;
+  }
+  
+  /* 和風グラデーション */
+  .wa-gradient-primary {
+    @apply bg-gradient-to-br from-indigo-600 via-indigo-700 to-indigo-800;
+  }
+  
+  .wa-gradient-accent {
+    @apply bg-gradient-to-br from-matcha-500 via-matcha-600 to-matcha-700;
+  }
+  
+  .wa-gradient-warm {
+    @apply bg-gradient-to-br from-sakura-400 via-sakura-500 to-sakura-600;
+  }
+  
+  /* テキストグラデーション */
+  .wa-text-gradient {
+    @apply bg-gradient-to-r from-indigo-600 to-matcha-600 bg-clip-text text-transparent;
+  }
+  
+  /* 和風シャドウ */
+  .wa-shadow-soft {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  }
+  
+  .wa-shadow-medium {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
   }
 }
