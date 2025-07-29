@@ -47,7 +47,9 @@ services:
       - HARINA_API_URL=http://harina:8000
       - NEXT_PUBLIC_API_URL=http://localhost:3000
     ports:
-      - "3000:3000"
+      - "3003:3000"
+    
+    
     depends_on:
       postgres:
         condition: service_healthy
