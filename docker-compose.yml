@@ -1,0 +1,83 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: receipt_postgres
+    environment:
+      POSTGRES_DB: receipt_db
+      POSTGRES_USER: receipt_user
+      POSTGRES_PASSWORD: receipt_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5433:5432"
+    networks:
+      - receipt_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U receipt_user -d receipt_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # HARINA CLI Server
+  harina:
+    build:
+      context: ./harina
+      dockerfile: Dockerfile
+    container_name: receipt_harina
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    ports:
+      - "8001:8000"
+    networks:
+      - receipt_network
+    restart: unless-stopped
+
+  # Next.js App (Frontend + API)
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: receipt_app
+    environment:
+      - DATABASE_URL=postgresql://receipt_user:receipt_password@postgres:5432/receipt_db
+      - HARINA_API_URL=http://harina:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      harina:
+        condition: service_started
+    networks:
+      - receipt_network
+    restart: unless-stopped
+
+  # db-ui アプリケーション
+  # db-ui:
+  #   image: ghcr.io/n7olkachev/db-ui:1.1
+  #   container_name: db-ui-app
+  #   environment:
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_USER: receipt_user
+  #     POSTGRES_PASSWORD: receipt_password
+  #     POSTGRES_DB: receipt_db
+  #     POSTGRES_PORT: 5432
+  #     # Groq API キーが必要な場合は以下のコメントを外して設定してください
+  #   ports:
+  #     - "${DB_UI_PORT_HOST:-3000}:3001"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  receipt_network:
+    driver: bridge

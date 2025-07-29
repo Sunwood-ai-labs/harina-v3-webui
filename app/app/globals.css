@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-gradient-to-br from-slate-50 to-blue-50/30 text-slate-900 antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white/80 backdrop-blur-sm border border-slate-200/60 rounded-xl shadow-sm;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-200 hover:shadow-md hover:border-slate-300/60;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:from-blue-700 hover:to-indigo-700 hover:shadow-lg hover:shadow-blue-500/25 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2;
+  }
+  
+  .btn-secondary {
+    @apply bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-700 px-6 py-2.5 rounded-lg font-medium transition-all duration-200 hover:bg-white hover:border-slate-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-500/50 focus:ring-offset-2;
+  }
+  
+  .input-field {
+    @apply bg-white/80 backdrop-blur-sm border border-slate-200 rounded-lg px-4 py-2.5 text-slate-900 placeholder-slate-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50;
+  }
+  
+  .upload-zone {
+    @apply border-2 border-dashed border-slate-300 rounded-xl bg-white/40 backdrop-blur-sm transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/50;
+  }
+  
+  .upload-zone-active {
+    @apply border-blue-500 bg-blue-50/80 shadow-lg shadow-blue-500/10;
+  }
+}
