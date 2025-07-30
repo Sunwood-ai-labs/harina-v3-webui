@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Loader2, Sparkles, Brain, Zap } from 'lucide-react'
+import { Upload, Loader2, Sparkles, Brain, Zap, Paperclip } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { ReceiptData } from '../types'
 
@@ -12,8 +12,8 @@ interface ReceiptUploadProps {
 
 const modelOptions = [
   { 
-    value: 'gemini', 
-    label: 'Gemini', 
+    value: 'gemini/gemini-2.5-flash', 
+    label: 'Gemini 2.5 Flash', 
     icon: Sparkles, 
     description: '高精度・高速処理',
     color: 'text-indigo-600',
@@ -30,8 +30,8 @@ const modelOptions = [
     borderColor: 'border-matcha-200'
   },
   { 
-    value: 'claude', 
-    label: 'Claude', 
+    value: 'claude-3-5-sonnet-20241022', 
+    label: 'Claude 3.5 Sonnet', 
     icon: Zap, 
     description: '正確な認識',
     color: 'text-sakura-600',
@@ -42,12 +42,11 @@ const modelOptions = [
 
 export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps) {
   const [isProcessing, setIsProcessing] = useState(false)
-  const [selectedModel, setSelectedModel] = useState('gemini')
+  const [selectedModel, setSelectedModel] = useState('gemini/gemini-2.5-flash')
+  const [selectedUploader, setSelectedUploader] = useState('夫')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    if (acceptedFiles.length === 0) return
-
-    const file = acceptedFiles[0]
+  const processFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) {
       toast.error('画像ファイルを選択してください', {
         position: "top-center",
@@ -62,6 +61,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
       const formData = new FormData()
       formData.append('file', file)
       formData.append('model', selectedModel)
+      formData.append('uploader', selectedUploader)
 
       const response = await fetch('/api/process-receipt', {
         method: 'POST',
@@ -88,6 +88,27 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
       setIsProcessing(false)
     }
   }, [selectedModel, onReceiptProcessed])
+
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (acceptedFiles.length === 0) return
+    const file = acceptedFiles[0]
+    await processFile(file)
+  }, [processFile])
+
+  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      await processFile(files[0])
+    }
+    // ファイル入力をリセット
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [processFile])
+
+  const handleFileButtonClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -139,6 +160,31 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
               </button>
             )
           })}
+        </div>
+      </div>
+
+      {/* アップロード者選択 */}
+      <div className="space-y-6">
+        <div className="text-center space-y-3">
+          <h3 className="text-2xl font-bold wa-text-gradient">アップロード者を選択</h3>
+          <p className="text-sumi-600 leading-relaxed">誰がレシートをアップロードしますか？</p>
+        </div>
+        
+        <div className="flex justify-center space-x-4">
+          {['夫', '嫁'].map((uploader) => (
+            <button
+              key={uploader}
+              onClick={() => setSelectedUploader(uploader)}
+              disabled={isProcessing}
+              className={`px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 ${
+                selectedUploader === uploader
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg'
+                  : 'bg-washi-200 text-sumi-700 hover:bg-washi-300'
+              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {uploader === '夫' ? '🤵 夫' : '👰 嫁'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -194,14 +240,34 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
                 </p>
               </div>
               
-              <div className="inline-flex items-center space-x-3 px-6 py-3 bg-washi-200/60 rounded-2xl text-sm text-sumi-600">
-                <span className="font-medium">対応形式:</span>
-                <span className="font-bold tracking-wide">JPEG, PNG, GIF, BMP</span>
+              <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6">
+                <div className="inline-flex items-center space-x-3 px-6 py-3 bg-washi-200/60 rounded-2xl text-sm text-sumi-600">
+                  <span className="font-medium">対応形式:</span>
+                  <span className="font-bold tracking-wide">JPEG, PNG, GIF, BMP</span>
+                </div>
+                
+                <button
+                  onClick={handleFileButtonClick}
+                  disabled={isProcessing}
+                  className="flex items-center space-x-3 px-6 py-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Paperclip size={20} />
+                  <span className="font-medium">ファイルを選択</span>
+                </button>
               </div>
             </div>
           </div>
         )}
       </div>
+      
+      {/* 隠しファイル入力 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
     </div>
   )
 }

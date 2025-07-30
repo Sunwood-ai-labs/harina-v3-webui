@@ -1,0 +1,57 @@
+<?xml version="1.0" ?>
+<receipt>
+  <store_info>
+    <n>551 HORAI 新大阪中央口店</n>
+    <address>大阪市淀川区西中島5-16-1</address>
+    <phone>06-6307-0551</phone>
+  </store_info>
+  <transaction_info>
+    <date>2025-05-30</date>
+    <time>16:13</time>
+    <receipt_number>000101</receipt_number>
+  </transaction_info>
+  <items>
+    <item>
+      <n>豚まん</n>
+      <category>食品・飲料</category>
+      <subcategory>肉類</subcategory>
+      <quantity>6</quantity>
+      <unit_price>230</unit_price>
+      <total_price>1380</total_price>
+    </item>
+    <item>
+      <n>海老焼売</n>
+      <category>食品・飲料</category>
+      <subcategory>魚介類</subcategory>
+      <quantity>12</quantity>
+      <unit_price>60</unit_price>
+      <total_price>720</total_price>
+    </item>
+    <item>
+      <n>焼餃子</n>
+      <category>食品・飲料</category>
+      <subcategory>肉類</subcategory>
+      <quantity>10</quantity>
+      <unit_price>40</unit_price>
+      <total_price>400</total_price>
+    </item>
+    <item>
+      <n>海鮮ちまき</n>
+      <category>食品・飲料</category>
+      <subcategory>魚介類</subcategory>
+      <quantity>2</quantity>
+      <unit_price>430</unit_price>
+      <total_price>860</total_price>
+    </item>
+  </items>
+  <totals>
+    <subtotal>3360</subtotal>
+    <tax>0</tax>
+    <total>3360</total>
+  </totals>
+  <payment_info>
+    <method>クレジットカード</method>
+    <amount_paid>3360</amount_paid>
+    <change>0</change>
+  </payment_info>
+</receipt>

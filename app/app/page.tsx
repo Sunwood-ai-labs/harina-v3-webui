@@ -1,117 +1,65 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Camera, List, Home as HomeIcon, Activity, Sparkles, Upload, Image as ImageIcon, BarChart3, X } from 'lucide-react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import ReceiptUpload from './components/ReceiptUpload'
-import ReceiptDisplay from './components/ReceiptDisplay'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import CameraCapture from './components/CameraCapture'
-import PhotoGallery from './components/PhotoGallery'
 import UsageDashboard from './components/UsageDashboard'
+import Header from './components/Header'
+import { SidebarNavigation, BottomNavigation, TabType } from './components/Navigation'
+import GalleryView from './components/views/GalleryView'
+import CameraView from './components/views/CameraView'
+import UploadView from './components/views/UploadView'
+import DetailView from './components/views/DetailView'
 import { ReceiptData } from './types'
 
-// 和風ナビゲーションコンポーネント
-const Navigation = () => {
-  const pathname = usePathname()
-
-  const navItems = [
-    { path: '/', icon: HomeIcon, label: 'ホーム' },
-    { path: '/receipts', icon: List, label: '履歴' },
-  ]
-
-  return (
-    <nav className="border-0 rounded-none wa-shadow-soft backdrop-blur-md bg-washi-50/95 sticky top-0 z-50">
-      <div className="max-w-6xl mx-auto px-8">
-        <div className="flex justify-between items-center h-20">
-          <div className="flex items-center space-x-4">
-            <div className="relative p-2 bg-gradient-to-br from-indigo-100 to-matcha-100 rounded-2xl">
-              <Camera className="text-indigo-700" size={24} />
-              <Sparkles className="absolute -top-1 -right-1 text-matcha-600" size={10} />
-            </div>
-            <div>
-              <span className="text-2xl font-bold wa-text-gradient tracking-wide">
-                レシート和
-              </span>
-              <p className="text-xs text-sumi-500 -mt-1">Receipt Wa</p>
-            </div>
-          </div>
-          
-          <div className="flex space-x-1">
-            {navItems.map((item) => {
-              const Icon = item.icon
-              const isActive = pathname === item.path
-              
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  className={`flex items-center space-x-3 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
-                    isActive
-                      ? 'wa-gradient-primary text-washi-50 wa-shadow-medium'
-                      : 'text-sumi-600 hover:text-sumi-800 hover:bg-washi-100/80'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="text-sm tracking-wide">{item.label}</span>
-                </Link>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </nav>
-  )
-}
-
-// 和風ステータスインジケーター
-const StatusIndicator = ({ status }: { status: string }) => (
-  <div className="flex items-center justify-center">
-    <div className="card px-6 py-3 card-hover">
-      <div className="flex items-center space-x-3 text-sm">
-        <div className={`w-3 h-3 rounded-full ${
-          status === 'healthy' ? 'bg-matcha-500 animate-pulse' : 
-          status === 'error' ? 'bg-sakura-500' : 'bg-gold-500 animate-pulse'
-        }`} />
-        <Activity size={16} className="text-sumi-500" />
-        <span className="text-sumi-600 font-medium">システム状態:</span>
-        <span className={`font-bold tracking-wide ${
-          status === 'healthy' ? 'text-matcha-600' : 
-          status === 'error' ? 'text-sakura-600' : 'text-gold-600'
-        }`}>
-          {status === 'healthy' ? '正常' : 
-           status === 'error' ? '停止中' : '確認中...'}
-        </span>
-      </div>
-    </div>
-  </div>
-)
-
-type TabType = 'upload' | 'camera' | 'gallery' | 'dashboard' | 'detail'
-
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('upload')
+  const [activeTab, setActiveTab] = useState<TabType>('gallery')
   const [currentReceipt, setCurrentReceipt] = useState<ReceiptData | null>(null)
   const [receipts, setReceipts] = useState<ReceiptData[]>([])
   const [healthStatus, setHealthStatus] = useState<string>('checking')
   const [showCamera, setShowCamera] = useState(false)
+  const [selectedUploader, setSelectedUploader] = useState('夫')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // ヘルスチェック
     fetch('/api/health')
       .then(() => setHealthStatus('healthy'))
       .catch(() => setHealthStatus('error'))
-    
-    // サンプルデータを追加（実際の実装では、APIから取得）
+
+    // データベースからレシート一覧を取得
+    fetchReceipts()
+  }, [])
+
+  const fetchReceipts = async () => {
+    try {
+      const response = await fetch('/api/receipts')
+      if (response.ok) {
+        const receiptsData = await response.json()
+        setReceipts(receiptsData)
+        console.log(`📋 Loaded ${receiptsData.length} receipts from database`)
+      } else {
+        console.error('Failed to fetch receipts from database')
+        // フォールバック：サンプルデータを使用
+        loadSampleData()
+      }
+    } catch (error) {
+      console.error('Error fetching receipts:', error)
+      // フォールバック：サンプルデータを使用
+      loadSampleData()
+    }
+  }
+
+  const loadSampleData = () => {
+    // サンプルデータ（データベース接続に失敗した場合のフォールバック）
     const sampleReceipts: ReceiptData[] = [
       {
         id: 1,
         filename: 'receipt_001.jpg',
-        store_name: 'スーパーマーケットA',
+        store_name: 'Merchant',
         store_address: '東京都渋谷区1-1-1',
-        transaction_date: '2025-01-20',
+        transaction_date: '20/2/23,2022',
         transaction_time: '14:30',
-        total_amount: 2580,
+        total_amount: 11327,
         items: [
           { name: '牛肉', category: '食品・飲料', total_price: 1200 },
           { name: '野菜セット', category: '食品・飲料', total_price: 680 },
@@ -122,9 +70,9 @@ export default function Home() {
       {
         id: 2,
         filename: 'receipt_002.jpg',
-        store_name: 'コンビニB',
+        store_name: 'Mogurt',
         store_address: '東京都新宿区2-2-2',
-        transaction_date: '2025-01-19',
+        transaction_date: '13,4,2039',
         transaction_time: '09:15',
         total_amount: 890,
         items: [
@@ -136,12 +84,12 @@ export default function Home() {
       }
     ]
     setReceipts(sampleReceipts)
-  }, [])
+  }
 
   const handleReceiptProcessed = (receipt: ReceiptData) => {
-    const newReceipt = { ...receipt, id: receipts.length + 1 }
-    setReceipts(prev => [newReceipt, ...prev])
-    setCurrentReceipt(newReceipt)
+    // データベースに保存されたレシートをリストに追加
+    setReceipts(prev => [receipt, ...prev])
+    setCurrentReceipt(receipt)
     setActiveTab('detail')
   }
 
@@ -149,20 +97,21 @@ export default function Home() {
     // カメラで撮影されたファイルを処理
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('model', 'gemini')
+    formData.append('model', 'gemini/gemini-2.5-flash')
+    formData.append('uploader', selectedUploader)
 
     fetch('/api/process-receipt', {
       method: 'POST',
       body: formData,
     })
-    .then(response => response.json())
-    .then(result => {
-      handleReceiptProcessed(result)
-    })
-    .catch(error => {
-      console.error('Error processing camera capture:', error)
-    })
-    
+      .then(response => response.json())
+      .then(result => {
+        handleReceiptProcessed(result)
+      })
+      .catch(error => {
+        console.error('Error processing camera capture:', error)
+      })
+
     setShowCamera(false)
   }
 
@@ -171,147 +120,105 @@ export default function Home() {
     setActiveTab('detail')
   }
 
-  const handleReceiptDelete = (receiptId: number) => {
-    setReceipts(prev => prev.filter(r => r.id !== receiptId))
-  }
 
-  const tabs = [
-    { id: 'upload' as TabType, label: 'アップロード', icon: Upload },
-    { id: 'camera' as TabType, label: '撮影', icon: Camera },
-    { id: 'gallery' as TabType, label: 'ギャラリー', icon: ImageIcon },
-    { id: 'dashboard' as TabType, label: 'ダッシュボード', icon: BarChart3 },
-  ]
+
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('model', 'gemini/gemini-2.5-flash')
+      formData.append('uploader', selectedUploader)
+
+      try {
+        const response = await fetch('/api/process-receipt', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          handleReceiptProcessed(result)
+        }
+      } catch (error) {
+        console.error('Error processing file upload:', error)
+      }
+    }
+
+    // ファイル入力をリセット
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [selectedUploader])
+
+  const handleFileButtonClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'upload':
-        return (
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center space-y-8 mb-12">
-              <div className="inline-flex items-center space-x-3 px-6 py-3 bg-gradient-to-r from-indigo-50 to-matcha-50 text-indigo-700 rounded-2xl text-sm font-medium wa-shadow-soft">
-                <Sparkles size={18} />
-                <span className="tracking-wide">AI搭載レシート認識システム</span>
-              </div>
-              
-              <div className="space-y-4">
-                <h2 className="text-4xl font-bold wa-text-gradient">
-                  レシートをアップロード
-                </h2>
-                
-                <p className="text-sumi-600 text-lg leading-relaxed">
-                  画像を選択して、AIが自動でレシート情報を読み取ります
-                </p>
-              </div>
-            </div>
-            <ReceiptUpload onReceiptProcessed={handleReceiptProcessed} />
-          </div>
-        )
-      
-      case 'camera':
-        return (
-          <div className="max-w-3xl mx-auto text-center space-y-12">
-            <div className="space-y-8">
-              <div className="inline-flex items-center space-x-3 px-6 py-3 bg-gradient-to-r from-matcha-50 to-indigo-50 text-matcha-700 rounded-2xl text-sm font-medium wa-shadow-soft">
-                <Camera size={18} />
-                <span className="tracking-wide">カメラ撮影モード</span>
-              </div>
-              
-              <div className="space-y-4">
-                <h2 className="text-4xl font-bold wa-text-gradient">
-                  レシートを撮影
-                </h2>
-                
-                <p className="text-sumi-600 text-lg leading-relaxed">
-                  カメラでレシートを直接撮影して、瞬時に情報を取得
-                </p>
-              </div>
-            </div>
-            
-            <button
-              onClick={() => setShowCamera(true)}
-              className="btn-primary text-lg px-12 py-5 rounded-2xl"
-            >
-              <Camera size={28} className="mr-4" />
-              <span className="tracking-wide">カメラを起動</span>
-            </button>
-          </div>
-        )
-      
       case 'gallery':
         return (
-          <PhotoGallery 
+          <GalleryView
             receipts={receipts}
+            selectedUploader={selectedUploader}
+            setSelectedUploader={setSelectedUploader}
             onReceiptSelect={handleReceiptSelect}
-            onReceiptDelete={handleReceiptDelete}
+            onCameraClick={() => setShowCamera(true)}
+            onFileClick={handleFileButtonClick}
           />
         )
-      
+
+      case 'camera':
+        return (
+          <CameraView
+            selectedUploader={selectedUploader}
+            setSelectedUploader={setSelectedUploader}
+            onCameraStart={() => setShowCamera(true)}
+          />
+        )
+
       case 'dashboard':
-        return <UsageDashboard receipts={receipts} />
-      
-      case 'detail':
-        return currentReceipt ? (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-slate-900">レシート詳細</h2>
-              <button
-                onClick={() => setActiveTab('gallery')}
-                className="flex items-center space-x-2 text-slate-600 hover:text-slate-900 transition-colors"
-              >
-                <X size={20} />
-                <span>閉じる</span>
-              </button>
-            </div>
-            <ReceiptDisplay receipt={currentReceipt} />
+        return (
+          <div className="pb-20 lg:pb-8">
+            <UsageDashboard receipts={receipts} />
           </div>
-        ) : null
-      
+        )
+
+      case 'upload':
+        return (
+          <UploadView onReceiptProcessed={handleReceiptProcessed} />
+        )
+
+      case 'detail':
+        return (
+          <DetailView
+            receipt={currentReceipt}
+            onClose={() => setActiveTab('gallery')}
+          />
+        )
+
       default:
         return null
     }
   }
 
   return (
-    <div className="min-h-screen">
-      <Navigation />
-      
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="space-y-8">
-          <StatusIndicator status={healthStatus} />
+    <div className="min-h-screen bg-gray-50">
+      <Header healthStatus={healthStatus} />
 
-          {/* 和風タブナビゲーション */}
-          {activeTab !== 'detail' && (
-            <div className="card p-3">
-              <div className="flex space-x-2">
-                {tabs.map((tab) => {
-                  const Icon = tab.icon
-                  const isActive = activeTab === tab.id
-                  
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center space-x-3 px-6 py-4 rounded-xl font-medium transition-all duration-300 ${
-                        isActive
-                          ? 'wa-gradient-primary text-washi-50 wa-shadow-medium'
-                          : 'text-sumi-600 hover:text-sumi-800 hover:bg-washi-100/80'
-                      }`}
-                    >
-                      <Icon size={20} />
-                      <span className="tracking-wide">{tab.label}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+      <div className="pt-16 flex">
+        <SidebarNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
-          {/* タブコンテンツ */}
-          <div className="animate-fade-in">
+        <main className="flex-1 lg:ml-64 px-4 py-6 min-h-screen">
+          <div className="w-full max-w-md lg:max-w-none mx-auto lg:mx-0 animate-fade-in">
             {renderTabContent()}
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
+
+      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* カメラモーダル */}
       {showCamera && (
@@ -320,6 +227,15 @@ export default function Home() {
           onClose={() => setShowCamera(false)}
         />
       )}
+
+      {/* 隠しファイル入力 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
     </div>
   )
 }

@@ -84,6 +84,16 @@ export default function ReceiptDisplay({ receipt }: ReceiptDisplayProps) {
               </div>
             )}
             
+            <div className="flex items-center space-x-4">
+              <div className="w-5 h-5 bg-indigo-500 rounded-full" />
+              <div>
+                <p className="text-sumi-700 font-bold text-lg">
+                  {receipt.uploader === '夫' ? '🤵 夫' : '👰 嫁'}
+                </p>
+                <p className="text-sumi-500 text-sm mt-1 tracking-wide">アップロード者</p>
+              </div>
+            </div>
+            
             {receipt.receipt_number && (
               <div className="p-6 bg-washi-200/60 rounded-2xl">
                 <p className="text-sumi-500 text-sm mb-2 font-medium tracking-wide">レシート番号</p>
