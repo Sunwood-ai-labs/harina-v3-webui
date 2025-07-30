@@ -140,7 +140,31 @@ export default function Home() {
       .then(() => setHealthStatus('healthy'))
       .catch(() => setHealthStatus('error'))
     
-    // サンプルデータを追加（実際の実装では、APIから取得）
+    // データベースからレシート一覧を取得
+    fetchReceipts()
+  }, [])
+
+  const fetchReceipts = async () => {
+    try {
+      const response = await fetch('/api/receipts')
+      if (response.ok) {
+        const receiptsData = await response.json()
+        setReceipts(receiptsData)
+        console.log(`📋 Loaded ${receiptsData.length} receipts from database`)
+      } else {
+        console.error('Failed to fetch receipts from database')
+        // フォールバック：サンプルデータを使用
+        loadSampleData()
+      }
+    } catch (error) {
+      console.error('Error fetching receipts:', error)
+      // フォールバック：サンプルデータを使用
+      loadSampleData()
+    }
+  }
+
+  const loadSampleData = () => {
+    // サンプルデータ（データベース接続に失敗した場合のフォールバック）
     const sampleReceipts: ReceiptData[] = [
       {
         id: 1,
@@ -230,12 +254,12 @@ export default function Home() {
       }
     ]
     setReceipts(sampleReceipts)
-  }, [])
+  }
 
   const handleReceiptProcessed = (receipt: ReceiptData) => {
-    const newReceipt = { ...receipt, id: receipts.length + 1 }
-    setReceipts(prev => [newReceipt, ...prev])
-    setCurrentReceipt(newReceipt)
+    // データベースに保存されたレシートをリストに追加
+    setReceipts(prev => [receipt, ...prev])
+    setCurrentReceipt(receipt)
     setActiveTab('detail')
   }
 
