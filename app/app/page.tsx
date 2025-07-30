@@ -386,9 +386,14 @@ export default function Home() {
                   </div>
                   
                   <div className="flex justify-between items-center mt-3">
-                    <span className="text-xs text-gray-500">
-                      {receipt.items?.length || 0} items
-                    </span>
+                    <div className="flex flex-col space-y-1">
+                      <span className="text-xs text-gray-500">
+                        {receipt.items?.length || 0} items
+                      </span>
+                      <span className="text-xs font-medium text-indigo-600">
+                        {receipt.uploader === '夫' ? '🤵 夫' : '👰 嫁'}
+                      </span>
+                    </div>
                     <div className="flex space-x-1">
                       <button className="p-1 hover:bg-gray-100 rounded">
                         <ImageIcon size={14} className="text-gray-400" />
