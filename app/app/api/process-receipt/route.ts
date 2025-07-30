@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ReceiptData } from '../../types'
+import xml2js from 'xml2js'
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
-    const model = formData.get('model') as string || 'gemini'
+    const model = formData.get('model') as string || 'gemini/gemini-2.5-flash'
 
     if (!file) {
       return NextResponse.json(
@@ -14,10 +15,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // デバッグ用：送信パラメータをログ出力
+    console.log('📤 Processing receipt:', {
+      filename: file.name,
+      fileSize: file.size,
+      model: model
+    })
+
     // HARINAサービスにファイルを送信
     const harinaFormData = new FormData()
     harinaFormData.append('file', file)
     harinaFormData.append('model', model)
+    // formatパラメータは削除（クライアントスクリプトと同じ形式にする）
 
     const harinaResponse = await fetch(`${process.env.HARINA_API_URL || 'http://harina:8000'}/process`, {
       method: 'POST',
@@ -25,10 +34,31 @@ export async function POST(request: NextRequest) {
     })
 
     if (!harinaResponse.ok) {
-      throw new Error(`HARINA service error: ${harinaResponse.status}`)
+      const errorText = await harinaResponse.text()
+      console.error(`❌ HARINA service error ${harinaResponse.status}:`, errorText)
+      throw new Error(`HARINA service error: ${harinaResponse.status} - ${errorText}`)
     }
 
-    const harinaResult = await harinaResponse.json()
+    let harinaResult: any
+    const responseText = await harinaResponse.text()
+    
+    try {
+      // まずJSONとしてパースを試行
+      harinaResult = JSON.parse(responseText)
+      console.log('✅ Receipt processed successfully')
+    } catch (jsonError) {
+      console.log('❌ JSON parse failed, trying XML parse...')
+      try {
+        // XMLとしてパースを試行
+        const parser = new xml2js.Parser({ explicitArray: false })
+        const xmlResult = await parser.parseStringPromise(responseText)
+        harinaResult = xmlResult.receipt || xmlResult
+        console.log('✅ XML parsed successfully')
+      } catch (xmlError) {
+        console.error('❌ Both JSON and XML parse failed:', jsonError, xmlError)
+        throw new Error('Invalid response format from HARINA service')
+      }
+    }
 
     // レスポンスデータを整形
     const receiptData: ReceiptData = {
@@ -46,6 +76,13 @@ export async function POST(request: NextRequest) {
       items: harinaResult.items || [],
       processed_at: new Date().toISOString()
     }
+
+    // 処理結果をログ出力
+    console.log('📋 Receipt data formatted:', {
+      store: receiptData.store_name,
+      total: receiptData.total_amount,
+      items: receiptData.items?.length || 0
+    })
 
     // TODO: データベースに保存する処理を追加
 
