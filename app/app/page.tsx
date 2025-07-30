@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Camera, Activity, Sparkles, Upload, Image as ImageIcon, BarChart3, X } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Camera, Activity, Sparkles, Upload, Image as ImageIcon, BarChart3, X, Paperclip } from 'lucide-react'
 import ReceiptUpload from './components/ReceiptUpload'
 import ReceiptDisplay from './components/ReceiptDisplay'
 import CameraCapture from './components/CameraCapture'
@@ -132,6 +132,7 @@ export default function Home() {
   const [receipts, setReceipts] = useState<ReceiptData[]>([])
   const [healthStatus, setHealthStatus] = useState<string>('checking')
   const [showCamera, setShowCamera] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     // ヘルスチェック
@@ -242,7 +243,7 @@ export default function Home() {
     // カメラで撮影されたファイルを処理
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('model', 'gemini')
+    formData.append('model', 'gemini/gemini-2.5-flash')
 
     fetch('/api/process-receipt', {
       method: 'POST',
@@ -267,6 +268,39 @@ export default function Home() {
   const handleReceiptDelete = (receiptId: number) => {
     setReceipts(prev => prev.filter(r => r.id !== receiptId))
   }
+
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('model', 'gemini/gemini-2.5-flash')
+
+      try {
+        const response = await fetch('/api/process-receipt', {
+          method: 'POST',
+          body: formData,
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          handleReceiptProcessed(result)
+        }
+      } catch (error) {
+        console.error('Error processing file upload:', error)
+      }
+    }
+    
+    // ファイル入力をリセット
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }, [])
+
+  const handleFileButtonClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
 
 
 
@@ -344,15 +378,26 @@ export default function Home() {
               ))}
             </div>
 
-            {/* スキャンボタン */}
-            <button
-              onClick={() => setShowCamera(true)}
-              className="fixed bottom-24 right-6 lg:bottom-8 lg:right-8 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors flex items-center space-x-2 z-40"
-            >
-              <Camera size={20} />
-              <span className="font-medium hidden sm:inline">Scan receipt</span>
-              <span className="font-medium sm:hidden">Scan</span>
-            </button>
+            {/* アクションボタン */}
+            <div className="fixed bottom-24 right-6 lg:bottom-8 lg:right-8 flex flex-col space-y-3 z-40">
+              <button
+                onClick={() => setShowCamera(true)}
+                className="bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg hover:bg-slate-700 transition-colors flex items-center space-x-2"
+              >
+                <Camera size={20} />
+                <span className="font-medium hidden sm:inline">Scan receipt</span>
+                <span className="font-medium sm:hidden">Scan</span>
+              </button>
+              
+              <button
+                onClick={handleFileButtonClick}
+                className="bg-indigo-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2"
+              >
+                <Paperclip size={20} />
+                <span className="font-medium hidden sm:inline">Upload file</span>
+                <span className="font-medium sm:hidden">Upload</span>
+              </button>
+            </div>
           </div>
         )
       
@@ -451,6 +496,15 @@ export default function Home() {
           onClose={() => setShowCamera(false)}
         />
       )}
+      
+      {/* 隠しファイル入力 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
     </div>
   )
 }
