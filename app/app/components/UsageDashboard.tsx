@@ -16,6 +16,7 @@ interface UsageStats {
   monthlyData: { month: string; count: number; amount: number }[]
   categoryData: { category: string; count: number; amount: number }[]
   modelUsage: { model: string; count: number; percentage: number }[]
+  uploaderData: { uploader: string; count: number; amount: number; percentage: number }[]
 }
 
 export default function UsageDashboard({ receipts }: UsageDashboardProps) {
@@ -26,7 +27,8 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
     avgAmount: 0,
     monthlyData: [],
     categoryData: [],
-    modelUsage: []
+    modelUsage: [],
+    uploaderData: []
   })
 
   useEffect(() => {
@@ -42,7 +44,8 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
         avgAmount: 0,
         monthlyData: [],
         categoryData: [],
-        modelUsage: []
+        modelUsage: [],
+        uploaderData: []
       })
       return
     }
@@ -87,6 +90,24 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5) // トップ5
 
+    // アップロード者別統計
+    const uploaderMap = new Map<string, { count: number; amount: number }>()
+    receipts.forEach(receipt => {
+      const uploader = receipt.uploader || '夫'
+      const existing = uploaderMap.get(uploader) || { count: 0, amount: 0 }
+      uploaderMap.set(uploader, {
+        count: existing.count + 1,
+        amount: existing.amount + (receipt.total_amount || 0)
+      })
+    })
+
+    const uploaderData = Array.from(uploaderMap.entries()).map(([uploader, data]) => ({
+      uploader,
+      count: data.count,
+      amount: data.amount,
+      percentage: Math.round((data.count / totalReceipts) * 100)
+    }))
+
     // モデル使用状況（仮想データ）
     const modelUsage = [
       { model: 'Gemini', count: Math.floor(totalReceipts * 0.6), percentage: 60 },
@@ -101,7 +122,8 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
       avgAmount,
       monthlyData,
       categoryData,
-      modelUsage
+      modelUsage,
+      uploaderData
     })
   }
 
@@ -272,6 +294,44 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
                     </div>
                     <span className="text-sm font-bold wa-text-gradient w-12 text-right">
                       {data.percentage}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* アップロード者別統計 */}
+        <div className="card p-8 card-hover">
+          <h3 className="text-2xl font-bold wa-text-gradient mb-8 tracking-wide">アップロード者別統計</h3>
+          <div className="space-y-6">
+            {stats.uploaderData.map((data, index) => (
+              <div key={data.uploader} className="flex items-center space-x-5">
+                <div className="p-3 bg-washi-200 rounded-xl text-2xl">
+                  {data.uploader === '夫' ? '🤵' : '👰'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-bold text-sumi-800 tracking-wide">{data.uploader}</span>
+                    <span className="text-sm text-sumi-600 font-medium">{data.count}件</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4 flex-1">
+                      <div className="flex-1 bg-washi-300 rounded-full h-3 mr-4">
+                        <div
+                          className="wa-gradient-primary h-3 rounded-full transition-all duration-700"
+                          style={{ width: `${data.percentage}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-bold wa-text-gradient w-12 text-right">
+                        {data.percentage}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <span className="text-sm font-bold wa-text-gradient">
+                      {formatCurrency(data.amount)}
                     </span>
                   </div>
                 </div>

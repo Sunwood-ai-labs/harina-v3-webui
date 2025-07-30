@@ -23,6 +23,7 @@ export async function GET() {
         r.tax,
         r.total_amount,
         r.payment_method,
+        r.uploader,
         r.processed_at,
         COUNT(ri.id) as item_count
       FROM receipts r
@@ -58,6 +59,7 @@ export async function GET() {
         tax: parseFloat(receiptRow.tax) || 0,
         total_amount: parseFloat(receiptRow.total_amount) || 0,
         payment_method: receiptRow.payment_method,
+        uploader: receiptRow.uploader,
         items: itemsResult.rows.map((item: any) => ({
           name: item.name,
           category: item.category,

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     tax DECIMAL(10,2) DEFAULT 0.00,
     total_amount DECIMAL(10,2) DEFAULT 0.00,
     payment_method VARCHAR(50),
+    uploader VARCHAR(50) DEFAULT '夫',
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS receipt_items (
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_receipts_processed_at ON receipts(processed_at);
 CREATE INDEX IF NOT EXISTS idx_receipts_store_name ON receipts(store_name);
+CREATE INDEX IF NOT EXISTS idx_receipts_uploader ON receipts(uploader);
 CREATE INDEX IF NOT EXISTS idx_receipt_items_receipt_id ON receipt_items(receipt_id);
 CREATE INDEX IF NOT EXISTS idx_receipt_items_category ON receipt_items(category);
 
@@ -41,7 +43,7 @@ CREATE INDEX IF NOT EXISTS idx_receipt_items_category ON receipt_items(category)
 INSERT INTO receipts (
     filename, store_name, store_address, store_phone, 
     transaction_date, transaction_time, receipt_number,
-    subtotal, tax, total_amount, payment_method
+    subtotal, tax, total_amount, payment_method, uploader
 ) VALUES (
     'sample_receipt.jpg', 
     'サンプルストア', 
@@ -53,7 +55,8 @@ INSERT INTO receipts (
     1000.00, 
     100.00, 
     1100.00, 
-    'クレジット'
+    'クレジット',
+    '夫'
 ) ON CONFLICT DO NOTHING;
 
 -- Get the receipt ID for sample items

@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get('file') as File
     const model = formData.get('model') as string || 'gemini/gemini-2.5-flash'
+    const uploader = formData.get('uploader') as string || '夫'
 
     if (!file) {
       return NextResponse.json(
@@ -19,7 +20,8 @@ export async function POST(request: NextRequest) {
     console.log('📤 Processing receipt:', {
       filename: file.name,
       fileSize: file.size,
-      model: model
+      model: model,
+      uploader: uploader
     })
 
     // HARINAサービスにファイルを送信（client_sample.pyと同じ形式）
@@ -95,6 +97,7 @@ export async function POST(request: NextRequest) {
       tax: parseFloat(harinaResult.totals?.tax || harinaResult.tax) || 0,
       total_amount: parseFloat(harinaResult.totals?.total || harinaResult.total_amount) || 0,
       payment_method: harinaResult.payment_info?.method || harinaResult.payment_method,
+      uploader: uploader,
       items: [],
       processed_at: new Date().toISOString()
     }
@@ -154,8 +157,8 @@ export async function POST(request: NextRequest) {
         INSERT INTO receipts (
           filename, store_name, store_address, store_phone, 
           transaction_date, transaction_time, receipt_number,
-          subtotal, tax, total_amount, payment_method
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          subtotal, tax, total_amount, payment_method, uploader
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id
       `
       
@@ -170,7 +173,8 @@ export async function POST(request: NextRequest) {
         receiptData.subtotal,
         receiptData.tax,
         receiptData.total_amount,
-        receiptData.payment_method
+        receiptData.payment_method,
+        receiptData.uploader
       ]
 
       const receiptResult = await pool.query(receiptInsertQuery, receiptValues)

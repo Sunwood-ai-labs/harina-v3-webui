@@ -43,6 +43,7 @@ const modelOptions = [
 export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedModel, setSelectedModel] = useState('gemini/gemini-2.5-flash')
+  const [selectedUploader, setSelectedUploader] = useState('夫')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const processFile = useCallback(async (file: File) => {
@@ -60,6 +61,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
       const formData = new FormData()
       formData.append('file', file)
       formData.append('model', selectedModel)
+      formData.append('uploader', selectedUploader)
 
       const response = await fetch('/api/process-receipt', {
         method: 'POST',
@@ -158,6 +160,31 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
               </button>
             )
           })}
+        </div>
+      </div>
+
+      {/* アップロード者選択 */}
+      <div className="space-y-6">
+        <div className="text-center space-y-3">
+          <h3 className="text-2xl font-bold wa-text-gradient">アップロード者を選択</h3>
+          <p className="text-sumi-600 leading-relaxed">誰がレシートをアップロードしますか？</p>
+        </div>
+        
+        <div className="flex justify-center space-x-4">
+          {['夫', '嫁'].map((uploader) => (
+            <button
+              key={uploader}
+              onClick={() => setSelectedUploader(uploader)}
+              disabled={isProcessing}
+              className={`px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 ${
+                selectedUploader === uploader
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg'
+                  : 'bg-washi-200 text-sumi-700 hover:bg-washi-300'
+              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {uploader === '夫' ? '🤵 夫' : '👰 嫁'}
+            </button>
+          ))}
         </div>
       </div>
 

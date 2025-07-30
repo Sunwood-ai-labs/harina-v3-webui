@@ -20,6 +20,7 @@ export interface ReceiptData {
   tax?: number
   total_amount?: number
   payment_method?: string
+  uploader?: string
   items?: ReceiptItem[]
   processed_at?: string
 }
