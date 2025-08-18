@@ -272,8 +272,8 @@ export default function Home() {
             </section>
 
             {/* メインコンテンツ */}
-            <section className="content-grid">
-              <div className="panel bg-white border border-gray-200 rounded-2xl shadow-sm">
+            <section className="content-grid w-full">
+              <div className="panel bg-white border border-gray-200 rounded-2xl shadow-sm w-full">
                 <h3 className="text-lg font-bold p-3 pb-0">最近のレシート</h3>
                 <div className="table-wrap overflow-auto">
                   <table className="w-full border-separate border-spacing-y-2 p-3">
@@ -571,6 +571,29 @@ export default function Home() {
             </header>
 
             <div className="body p-4 space-y-6">
+              {/* レシート画像 */}
+              {currentReceipt.image_path && (
+                <div className="bg-gradient-to-r from-sakura-50 to-indigo-50 p-4 rounded-lg border border-washi-200">
+                  <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+                    <span className="mr-2">📄</span>
+                    レシート画像
+                  </h3>
+                  <div className="flex justify-center">
+                    <div className="relative group">
+                      <img
+                        src={currentReceipt.image_path}
+                        alt={`レシート - ${currentReceipt.store_name}`}
+                        className="max-w-full max-h-64 object-contain rounded-lg shadow-md border border-washi-300"
+                        onError={(e) => {
+                          e.currentTarget.src = '/placeholder-receipt.png'
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300 rounded-lg"></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 店舗情報 */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h3 className="text-lg font-bold text-gray-800 mb-3">🏪 店舗情報</h3>
