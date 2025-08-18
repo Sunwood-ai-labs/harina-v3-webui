@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS receipts (
     total_amount DECIMAL(10,2) DEFAULT 0.00,
     payment_method VARCHAR(50),
     uploader VARCHAR(50) DEFAULT '夫',
-    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    image_path VARCHAR(500)
 );
 
 -- Create receipt_items table
