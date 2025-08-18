@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Image as ImageIcon, Calendar, Store, Trash2, Eye, Download, X } from 'lucide-react'
 import { ReceiptData } from '../types'
+import DetailView from './views/DetailView'
 
 interface PhotoGalleryProps {
   receipts: ReceiptData[]
@@ -126,10 +127,10 @@ export default function PhotoGallery({ receipts, onReceiptSelect, onReceiptDelet
         </div>
       </div>
 
-      {/* 和風モーダル */}
+      {/* 詳細表示モーダル */}
       {isModalOpen && selectedReceipt && (
         <div className="fixed inset-0 bg-sumi-900 bg-opacity-60 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
-          <div className="bg-washi-50 rounded-3xl max-w-lg w-full max-h-[85vh] overflow-y-auto wa-shadow-medium">
+          <div className="bg-washi-50 rounded-3xl max-w-4xl w-full max-h-[85vh] overflow-y-auto wa-shadow-medium">
             <div className="p-8">
               {/* ヘッダー */}
               <div className="flex items-center justify-between mb-8">
@@ -142,70 +143,11 @@ export default function PhotoGallery({ receipts, onReceiptSelect, onReceiptDelet
                 </button>
               </div>
 
-              {/* レシート画像プレビュー */}
-              <div className="aspect-[3/4] bg-gradient-to-br from-washi-200 to-washi-300 rounded-2xl mb-8 flex items-center justify-center overflow-hidden">
-                {selectedReceipt.image_path ? (
-                  <img
-                    src={selectedReceipt.image_path}
-                    alt={`レシート - ${selectedReceipt.store_name}`}
-                    className="w-full h-full object-cover rounded-2xl"
-                  />
-                ) : (
-                  <ImageIcon className="text-sumi-400" size={60} />
-                )}
-              </div>
-
-              {/* レシート情報 */}
-              <div className="space-y-6">
-                <div>
-                  <label className="text-sm font-bold text-sumi-600 tracking-wide">店舗名</label>
-                  <p className="text-sumi-800 font-bold text-lg mt-1">{selectedReceipt.store_name || '不明'}</p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-sumi-600 tracking-wide">取引日時</label>
-                  <p className="text-sumi-800 font-medium mt-1">
-                    {formatDate(selectedReceipt.transaction_date)} {selectedReceipt.transaction_time}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-sumi-600 tracking-wide">合計金額</label>
-                  <p className="text-3xl font-bold wa-text-gradient mt-2">
-                    ¥{selectedReceipt.total_amount?.toLocaleString() || '0'}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-sm font-bold text-sumi-600 tracking-wide">商品数</label>
-                  <p className="text-sumi-800 font-bold text-lg mt-1">{selectedReceipt.items?.length || 0}点</p>
-                </div>
-
-                {selectedReceipt.payment_method && (
-                  <div>
-                    <label className="text-sm font-bold text-sumi-600 tracking-wide">支払い方法</label>
-                    <p className="text-sumi-800 font-medium mt-1">{selectedReceipt.payment_method}</p>
-                  </div>
-                )}
-              </div>
-
-              {/* アクションボタン */}
-              <div className="flex space-x-4 mt-8">
-                <button
-                  onClick={handleViewDetails}
-                  className="flex-1 flex items-center justify-center space-x-3 btn-primary rounded-2xl py-4"
-                >
-                  <Eye size={20} />
-                  <span className="tracking-wide">詳細を見る</span>
-                </button>
-                
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-6 py-4 border border-washi-400 text-sumi-700 rounded-2xl hover:bg-washi-100 transition-colors font-medium tracking-wide"
-                >
-                  閉じる
-                </button>
-              </div>
+              {/* DetailViewコンポーネントを使用 */}
+              <DetailView
+                receipt={selectedReceipt}
+                onClose={() => setIsModalOpen(false)}
+              />
             </div>
           </div>
         </div>
