@@ -17,6 +17,7 @@ interface DbReceiptRow {
   payment_method: string;
   processed_at: string;
   image_path: string;
+  uploader: string; // 👈 この行を追加
 }
 
 // データベースから取得するアイテムの型定義
@@ -38,6 +39,13 @@ interface DbCountRow {
 
 interface DbSumRow {
   total: string | null;
+}
+
+// ユーザー統計情報クエリの結果型定義
+interface DbUserStatRow {
+  uploader: string;
+  total_amount: string;
+  receipt_count: string;
 }
 
 // PostgreSQL接続プール
@@ -70,12 +78,12 @@ export async function saveReceiptToDatabase(
     // レシート基本情報を保存
     const receiptResult = await client.query(
       `INSERT INTO receipts (
-        filename, store_name, store_address, store_phone, 
+        filename, store_name, store_address, store_phone,
         transaction_date, transaction_time, receipt_number,
         subtotal, tax, total_amount, payment_method, processed_at,
-        image_path
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
-      RETURNING id`,
+        image_path, uploader
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id`, // 👆 uploader を追加し、VALUES を $14 までに
       [
         receipt.filename,
         receipt.store_name,
@@ -90,6 +98,7 @@ export async function saveReceiptToDatabase(
         receipt.payment_method,
         receipt.processed_at || new Date().toISOString(),
         receipt.image_path,
+        receipt.uploader, // 👈 パラメータに receipt.uploader を追加
       ]
     );
 
@@ -215,6 +224,7 @@ export async function getReceiptsFromDatabase(
         items,
         processed_at: receiptRow.processed_at,
         image_path: receiptRow.image_path,
+        uploader: receiptRow.uploader, // 👈 この行を追加
       });
     }
 
@@ -232,23 +242,34 @@ export async function getDatabaseStats() {
       totalReceipts: 0,
       totalAmount: 0,
       totalItems: 0,
+      userStats: [],
     };
   }
 
   const client = await connectWithRetry();
 
   try {
-    const [receiptsCount, totalAmount, itemsCount] = await Promise.all([
+    const [receiptsCount, totalAmount, itemsCount, userStatsResult] = await Promise.all([
       client.query("SELECT COUNT(*) as count FROM receipts"),
       client.query("SELECT SUM(total_amount) as total FROM receipts"),
       client.query("SELECT COUNT(*) as count FROM receipt_items"),
+      client.query(
+        "SELECT uploader, SUM(total_amount) as total_amount, COUNT(*) as receipt_count FROM receipts GROUP BY uploader"
+      ),
     ]);
 
+    const userStats = (userStatsResult.rows as DbUserStatRow[]).map(row => ({
+      uploader: row.uploader,
+      totalAmount: parseFloat(row.total_amount) || 0,
+      receiptCount: parseInt(row.receipt_count, 10) || 0,
+    }));
+
     return {
-      totalReceipts: parseInt((receiptsCount.rows[0] as DbCountRow).count),
+      totalReceipts: parseInt((receiptsCount.rows[0] as DbCountRow).count, 10),
       totalAmount:
         parseFloat((totalAmount.rows[0] as DbSumRow).total || "0") || 0,
-      totalItems: parseInt((itemsCount.rows[0] as DbCountRow).count),
+      totalItems: parseInt((itemsCount.rows[0] as DbCountRow).count, 10),
+      userStats,
     };
   } finally {
     client.release();
