@@ -17,5 +17,5 @@ RUN npm run build
 # ポート3000を公開
 EXPOSE 3000
 
-# アプリケーションを起動
-CMD ["npm", "start"]
+# データベース待機とアプリケーション起動
+CMD ["sh", "-c", "node wait-for-db.js && npm start"]
