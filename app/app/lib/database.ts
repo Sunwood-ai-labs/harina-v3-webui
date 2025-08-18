@@ -276,6 +276,119 @@ export async function getDatabaseStats() {
   }
 }
 
+// CSVの行データを型定義
+interface CsvRow {
+  アップローダー: string;
+  ファイル名: string;
+  購入場所: string;
+  日付: string;
+  時間: string;
+  品名: string;
+  単価: string;
+  個数: string;
+  単位: string;
+  カテゴリ: string;
+  金額: string;
+  支払方法: string;
+}
+
+// CSVデータをまとめてデータベースに登録する関数
+export async function importReceiptsFromCsv(data: CsvRow[]) {
+  if (isBuildTime) {
+    return { newReceipts: 0, newItems: 0 };
+  }
+
+  const client = await connectWithRetry();
+  
+  // ファイル名でデータをグループ化
+  const receiptsByFilename = data.reduce((acc, row) => {
+    const key = row.ファイル名;
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(row);
+    return acc;
+  }, {} as Record<string, CsvRow[]>);
+
+  let newReceiptsCount = 0;
+  let newItemsCount = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    for (const filename in receiptsByFilename) {
+      const items = receiptsByFilename[filename];
+      const firstItem = items[0];
+
+      // 同じレシートが既に存在するか確認（店名と日付で簡易的に判断）
+      const existingReceipt = await client.query(
+        'SELECT id FROM receipts WHERE store_name = $1 AND transaction_date = $2 AND transaction_time = $3 LIMIT 1',
+        [firstItem.購入場所, firstItem.日付.trim(), firstItem.時間.trim()]
+      );
+
+      let receiptId;
+
+      if (existingReceipt.rows.length === 0) {
+        // 新しいレシートを登録
+        const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.金額) || 0), 0);
+        
+        const receiptResult = await client.query(
+          `INSERT INTO receipts (
+            filename, store_name, transaction_date, transaction_time,
+            total_amount, payment_method, uploader, processed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING id`,
+          [
+            filename,
+            firstItem.購入場所,
+            firstItem.日付.trim(),
+            firstItem.時間.trim(),
+            totalAmount,
+            firstItem.支払方法,
+            firstItem.アップローダー,
+            new Date().toISOString()
+          ]
+        );
+        receiptId = receiptResult.rows[0].id;
+        newReceiptsCount++;
+      } else {
+        // 既存のレシートIDを使用
+        receiptId = existingReceipt.rows[0].id;
+      }
+      
+      // 商品情報を登録
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO receipt_items (
+            receipt_id, name, category, quantity, unit_price, total_price
+          ) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            receiptId,
+            item.品名,
+            item.カテゴリ,
+            parseInt(item.個数) || 1,
+            parseFloat(item.単価) || 0,
+            parseFloat(item.金額) || 0
+          ]
+        );
+        newItemsCount++;
+      }
+    }
+
+    await client.query('COMMIT');
+    
+    return {
+      newReceipts: newReceiptsCount,
+      newItems: newItemsCount
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // データベース接続テスト
 export async function testDatabaseConnection(): Promise<boolean> {
   // ビルド時は常にfalseを返す

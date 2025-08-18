@@ -6,6 +6,7 @@ import ReceiptUpload from "./components/ReceiptUpload";
 import CameraCapture from "./components/CameraCapture";
 import UploaderSelector from "./components/UploaderSelector";
 import { ReceiptData } from "./types";
+import { toast } from "react-toastify";
 
 // サイドバーコンポーネント
 const Sidebar = ({
@@ -212,6 +213,51 @@ export default function Home() {
   const handleCameraCapture = (file: File) => {
     setShowCamera(false);
     handleFileUpload(file);
+  };
+
+  // CSVアップロード処理用のハンドラを追加
+  const handleCsvUpload = async (file: File) => {
+    setShowFabPop(false);
+    setIsProcessing(true);
+    setProcessingSteps(1); // ステップ表示を流用
+    setProcessingMessage("CSVファイルをアップロード中...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      setProcessingSteps(2);
+      setProcessingMessage("データをインポート中...");
+
+      const response = await fetch("/api/import-csv", {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setProcessingSteps(4);
+        setProcessingMessage("インポート完了！");
+        toast.success(
+          `インポート完了: 新規レシート${result.newReceipts}件、商品${result.newItems}件`
+        );
+        await fetchReceipts(); // データを再取得して画面を更新
+      } else {
+        throw new Error(result.error || "CSVインポートに失敗しました");
+      }
+    } catch (error) {
+      console.error("Error importing CSV:", error);
+      toast.error(
+        error instanceof Error ? error.message : "CSVインポート中にエラーが発生しました"
+      );
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProcessingSteps(1);
+        setProcessingMessage("");
+      }, 2000);
+    }
   };
 
   const confirmReceipt = () => {
@@ -498,7 +544,7 @@ export default function Home() {
               />
             </div>
 
-            <div className="fab-actions grid grid-cols-2 gap-2">
+            <div className="fab-actions grid grid-cols-1 gap-2">
               <div
                 className="act flex gap-2 items-center justify-center p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50 cursor-pointer hover:bg-white"
                 onClick={() => setShowCamera(true)}
@@ -518,7 +564,23 @@ export default function Home() {
                   input.click();
                 }}
               >
-                🗂 ファイルを選択
+                🗂 画像ファイルを選択
+              </div>
+              {/* CSVインポートボタンを追加 */}
+              <div
+                className="act flex gap-2 items-center justify-center p-3 border border-dashed border-gray-300 rounded-lg bg-blue-50 text-blue-700 cursor-pointer hover:bg-white"
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".csv";
+                  input.onchange = (e) => {
+                    const file = (e.target as HTMLInputElement).files?.[0];
+                    if (file) handleCsvUpload(file);
+                  };
+                  input.click();
+                }}
+              >
+                📄 CSVをインポート
               </div>
             </div>
           </div>
