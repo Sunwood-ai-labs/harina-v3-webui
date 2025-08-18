@@ -27,6 +27,31 @@ const getCategoryColor = (category: string) => {
 export default function ReceiptDisplay({ receipt }: ReceiptDisplayProps) {
   return (
     <div className="max-w-6xl mx-auto space-y-12 animate-fade-in">
+      {/* レシート画像 */}
+      {receipt.image_path && (
+        <div className="card p-10 card-hover">
+          <div className="flex items-center space-x-4 mb-8">
+            <div className="p-4 bg-gradient-to-br from-sakura-100 to-sakura-200 rounded-2xl">
+              <Receipt className="text-sakura-700" size={32} />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold wa-text-gradient tracking-wide">レシート画像</h2>
+              <p className="text-sumi-600 text-lg mt-1">アップロードされた画像</p>
+            </div>
+          </div>
+          
+          <div className="flex justify-center">
+            <div className="max-w-md w-full">
+              <img
+                src={receipt.image_path}
+                alt={`レシート - ${receipt.store_name}`}
+                className="w-full h-auto rounded-2xl shadow-lg border border-washi-300"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* レシート基本情報 */}
       <div className="card p-10 card-hover">
         <div className="flex items-center space-x-4 mb-8">
