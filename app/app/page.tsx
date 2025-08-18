@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Search, MoreHorizontal } from "lucide-react";
+import { Search, MoreHorizontal, FileText } from "lucide-react";
 import ReceiptUpload from "./components/ReceiptUpload";
 import CameraCapture from "./components/CameraCapture";
+import UploaderSelector from "./components/UploaderSelector";
 import { ReceiptData } from "./types";
 
 // サイドバーコンポーネント
@@ -108,12 +109,14 @@ export default function Home() {
   const [processingSteps, setProcessingSteps] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingMessage, setProcessingMessage] = useState("");
+  const [selectedUploader, setSelectedUploader] = useState("夫"); // 👈 ユーザー選択状態を追加
 
   const [stats, setStats] = useState({
     totalReceipts: 0,
     totalAmount: 0,
     totalItems: 0,
     avgAmount: 0,
+    userStats: [] as { uploader: string; totalAmount: number; receiptCount: number }[],
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -134,6 +137,7 @@ export default function Home() {
               data.stats.totalReceipts > 0
                 ? data.stats.totalAmount / data.stats.totalReceipts
                 : 0,
+            userStats: data.stats.userStats || [],
           });
         }
       }
@@ -165,6 +169,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("model", "gemini"); // デフォルトモデル
+      formData.append("uploader", selectedUploader); // 👈 選択されたユーザー情報を追加
 
       setProcessingSteps(2);
       setProcessingMessage("HARINA APIで画像を解析中...");
@@ -224,51 +229,45 @@ export default function Home() {
         return (
           <main className="p-5 grid gap-4">
             {/* 統計カード */}
-            <section className="cards grid grid-cols-4 gap-3">
-              <div className="card bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
-                <h4 className="text-xs text-gray-500 font-semibold mb-1">
+            <section className="cards grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 合計支出カード */}
+              <div className="card bg-white border border-gray-200 rounded-2xl p-4 shadow-sm md:col-span-2">
+                <h4 className="text-sm text-gray-500 font-semibold mb-1">
                   総支出額
                 </h4>
-                <div className="value text-2xl font-extrabold mb-2">
+                <div className="value text-3xl font-extrabold mb-2">
                   {isLoading ? "..." : `¥${stats.totalAmount.toLocaleString()}`}
                 </div>
                 <div className="trend text-xs text-gray-500">
-                  データベースから取得
+                  合計: {stats.totalReceipts}件のレシート
                 </div>
               </div>
-              <div className="card bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
-                <h4 className="text-xs text-gray-500 font-semibold mb-1">
-                  レシート数
-                </h4>
-                <div className="value text-2xl font-extrabold mb-2">
-                  {isLoading ? "..." : `${stats.totalReceipts}件`}
-                </div>
-                <div className="trend text-xs text-gray-500">
-                  自動取り込み済み
-                </div>
-              </div>
-              <div className="card bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
-                <h4 className="text-xs text-gray-500 font-semibold mb-1">
-                  商品数
-                </h4>
-                <div className="value text-2xl font-extrabold mb-2">
-                  {isLoading ? "..." : `${stats.totalItems}点`}
-                </div>
-                <div className="trend text-xs text-gray-500">認識済み商品</div>
-              </div>
-              <div className="card bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
-                <h4 className="text-xs text-gray-500 font-semibold mb-1">
-                  平均支出額
-                </h4>
-                <div className="value text-2xl font-extrabold mb-2">
-                  {isLoading
-                    ? "..."
-                    : `¥${Math.round(stats.avgAmount).toLocaleString()}`}
-                </div>
-                <div className="trend good text-xs text-green-600">
-                  1レシートあたり
-                </div>
-              </div>
+
+              {/* ユーザーごとの支出カード */}
+              {isLoading ? (
+                Array.from({ length: 2 }).map((_, index) => (
+                  <div key={index} className="card bg-white border border-gray-200 rounded-2xl p-4 shadow-sm animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-8 bg-gray-300 rounded w-1/2 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  </div>
+                ))
+              ) : (
+                stats.userStats.map(userStat => (
+                  <div key={userStat.uploader} className="card bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                    <h4 className="text-sm text-gray-500 font-semibold mb-1 flex items-center gap-2">
+                      {userStat.uploader === '夫' ? '🤵' : '👰'}
+                      {userStat.uploader} の支出額
+                    </h4>
+                    <div className="value text-3xl font-extrabold mb-2">
+                      ¥{userStat.totalAmount.toLocaleString()}
+                    </div>
+                    <div className="trend text-xs text-gray-500">
+                      {userStat.receiptCount}件のレシート
+                    </div>
+                  </div>
+                ))
+              )}
             </section>
 
             {/* メインコンテンツ */}
@@ -284,6 +283,9 @@ export default function Home() {
                         </th>
                         <th className="text-xs text-gray-500 text-left px-2">
                           店舗
+                        </th>
+                        <th className="text-xs text-gray-500 text-left px-2">
+                          アップロード者
                         </th>
                         <th className="text-xs text-gray-500 text-left px-2">
                           カテゴリ
@@ -323,7 +325,7 @@ export default function Home() {
                         </tr>
                       ) : (
                         receipts.map((receipt) => (
-                          <tr 
+                          <tr
                             key={receipt.id}
                             className="hover:bg-gray-50 cursor-pointer"
                             onClick={() => {
@@ -336,6 +338,12 @@ export default function Home() {
                             </td>
                             <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
                               {receipt.store_name || "店舗名不明"}
+                            </td>
+                            <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
+                              <span className="inline-flex items-center gap-1">
+                                {receipt.uploader === '夫' ? '🤵' : '👰'}
+                                <span>{receipt.uploader || '夫'}</span>
+                              </span>
                             </td>
                             <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
                               {receipt.items?.[0]?.category || "未分類"}
@@ -370,114 +378,66 @@ export default function Home() {
       case "receipts":
         return (
           <main className="p-5">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  レシート一覧
-                </h2>
-                <button
-                  onClick={() => setShowFabPop(true)}
-                  className="btn accent bg-teal-500 text-white px-4 py-2 rounded-lg font-semibold"
-                >
-                  + レシート追加
-                </button>
-              </div>
-
-              <div className="card bg-white border border-gray-200 rounded-2xl shadow-sm">
-                <div className="p-4 border-b border-gray-200">
-                  <h3 className="text-lg font-bold">
-                    全レシート ({stats.totalReceipts}件)
-                  </h3>
-                </div>
-                <div className="table-wrap overflow-auto">
-                  <table className="w-full border-separate border-spacing-y-2 p-3">
-                    <thead>
-                      <tr>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          ID
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          日付
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          店舗名
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          商品数
-                        </th>
-                        <th className="text-xs text-gray-500 text-right px-4 py-2">
-                          金額
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          支払方法
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-4 py-2">
-                          処理日時
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isLoading ? (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-4 py-8 text-center text-gray-500"
-                          >
-                            データを読み込み中...
-                          </td>
-                        </tr>
-                      ) : receipts.length === 0 ? (
-                        <tr>
-                          <td
-                            colSpan={7}
-                            className="px-4 py-8 text-center text-gray-500"
-                          >
-                            レシートがありません
-                          </td>
-                        </tr>
-                      ) : (
-                        receipts.map((receipt) => (
-                          <tr 
-                            key={receipt.id} 
-                            className="hover:bg-gray-50 cursor-pointer"
-                            onClick={() => {
-                              setCurrentReceipt(receipt)
-                              setShowModal(true)
-                            }}
-                          >
-                            <td className="px-4 py-3 border-t border-b border-l border-gray-200 rounded-l-lg text-sm font-mono">
-                              #{receipt.id}
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-gray-200 text-sm">
-                              {receipt.transaction_date || "不明"}
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-gray-200 text-sm font-medium">
-                              {receipt.store_name || "店舗名不明"}
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-gray-200 text-sm">
-                              {receipt.items?.length || 0}点
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-gray-200 text-sm text-right font-bold">
-                              ¥{receipt.total_amount?.toLocaleString() || "0"}
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-gray-200 text-sm">
-                              {receipt.payment_method || "不明"}
-                            </td>
-                            <td className="px-4 py-3 border-t border-b border-r border-gray-200 rounded-r-lg text-sm text-gray-500">
-                              {receipt.processed_at
-                                ? new Date(receipt.processed_at).toLocaleString(
-                                    "ja-JP"
-                                  )
-                                : "不明"}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">
+                レシート一覧 ({stats.totalReceipts}件)
+              </h2>
+              <button
+                onClick={() => setShowFabPop(true)}
+                className="btn accent bg-teal-500 text-white px-4 py-2 rounded-lg font-semibold"
+              >
+                + レシート追加
+              </button>
             </div>
+
+            {/* 👇 ここからテーブルをグリッドレイアウトに変更 */}
+            {isLoading ? (
+              <div className="text-center py-20 text-gray-500">
+                データを読み込み中...
+              </div>
+            ) : receipts.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                レシートがありません。右下のボタンから追加してください。
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {receipts.map((receipt) => (
+                  <div
+                    key={receipt.id}
+                    className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-lg transition-shadow cursor-pointer"
+                    onClick={() => {
+                      setCurrentReceipt(receipt);
+                      setShowModal(true);
+                    }}
+                  >
+                    {/* 画像サムネイル */}
+                    <div className="aspect-w-3 aspect-h-4 mb-4 rounded-lg bg-gray-100 flex items-center justify-center">
+                      {receipt.image_path ? (
+                        <img
+                          src={receipt.image_path}
+                          alt={`レシート - ${receipt.store_name}`}
+                          className="w-full h-full object-cover rounded-lg"
+                          onError={(e) => { e.currentTarget.src = '/placeholder-receipt.png' }}
+                        />
+                      ) : (
+                        // 画像がない場合は、lucide-reactのアイコンを表示
+                        <FileText className="text-gray-400 w-16 h-16" />
+                      )}
+                    </div>
+                    {/* レシート情報 */}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold text-gray-800 truncate">{receipt.store_name || "店舗名不明"}</p>
+                        <p className="text-sm text-gray-500">{receipt.transaction_date || "日付不明"}</p>
+                      </div>
+                      <span className="text-lg font-bold text-teal-600">
+                        ¥{receipt.total_amount?.toLocaleString() || "0"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </main>
         );
 
@@ -528,6 +488,15 @@ export default function Home() {
                 閉じる
               </button>
             </header>
+
+            {/* 👇 ユーザー選択UIを追加 */}
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-gray-600 mb-2 block">アップロード者</label>
+              <UploaderSelector
+                selectedUploader={selectedUploader}
+                setSelectedUploader={setSelectedUploader}
+              />
+            </div>
 
             <div className="fab-actions grid grid-cols-2 gap-2">
               <div
