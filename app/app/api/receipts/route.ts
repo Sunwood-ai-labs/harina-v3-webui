@@ -1,89 +1,45 @@
-import { NextResponse } from 'next/server'
-import { ReceiptData } from '../../types'
+import { NextRequest, NextResponse } from 'next/server'
+import { getReceiptsFromDatabase, getDatabaseStats } from '../../lib/database'
 
-export async function GET() {
+export const dynamic = 'force-dynamic'
+
+export async function GET(request: NextRequest) {
   try {
-    const { Pool } = require('pg')
-    const pool = new Pool({
-      connectionString: process.env.DATABASE_URL
-    })
+    console.log('Fetching receipts from database...')
+    const url = new URL(request.url)
+    const limit = parseInt(url.searchParams.get('limit') || '50')
+    const offset = parseInt(url.searchParams.get('offset') || '0')
+    const includeStats = url.searchParams.get('stats') === 'true'
 
-    // レシート一覧を取得（最新順）
-    const receiptsQuery = `
-      SELECT 
-        r.id,
-        r.filename,
-        r.store_name,
-        r.store_address,
-        r.store_phone,
-        r.transaction_date,
-        r.transaction_time,
-        r.receipt_number,
-        r.subtotal,
-        r.tax,
-        r.total_amount,
-        r.payment_method,
-        r.uploader,
-        r.processed_at,
-        COUNT(ri.id) as item_count
-      FROM receipts r
-      LEFT JOIN receipt_items ri ON r.id = ri.receipt_id
-      GROUP BY r.id
-      ORDER BY r.processed_at DESC
-    `
-
-    const receiptsResult = await pool.query(receiptsQuery)
-    const receipts: ReceiptData[] = []
-
-    // 各レシートのアイテムを取得
-    for (const receiptRow of receiptsResult.rows) {
-      const itemsQuery = `
-        SELECT name, category, subcategory, quantity, unit_price, total_price
-        FROM receipt_items
-        WHERE receipt_id = $1
-        ORDER BY id
-      `
-      
-      const itemsResult = await pool.query(itemsQuery, [receiptRow.id])
-      
-      const receipt: ReceiptData = {
-        id: receiptRow.id,
-        filename: receiptRow.filename,
-        store_name: receiptRow.store_name,
-        store_address: receiptRow.store_address,
-        store_phone: receiptRow.store_phone,
-        transaction_date: receiptRow.transaction_date,
-        transaction_time: receiptRow.transaction_time,
-        receipt_number: receiptRow.receipt_number,
-        subtotal: parseFloat(receiptRow.subtotal) || 0,
-        tax: parseFloat(receiptRow.tax) || 0,
-        total_amount: parseFloat(receiptRow.total_amount) || 0,
-        payment_method: receiptRow.payment_method,
-        uploader: receiptRow.uploader,
-        items: itemsResult.rows.map((item: any) => ({
-          name: item.name,
-          category: item.category,
-          subcategory: item.subcategory,
-          quantity: item.quantity,
-          unit_price: parseFloat(item.unit_price) || 0,
-          total_price: parseFloat(item.total_price) || 0
-        })),
-        processed_at: receiptRow.processed_at
-      }
-      
-      receipts.push(receipt)
+    const receipts = await getReceiptsFromDatabase(limit, offset)
+    console.log(`Retrieved ${receipts.length} receipts`)
+    
+    let stats = null
+    if (includeStats) {
+      stats = await getDatabaseStats()
+      console.log('Database stats:', stats)
     }
 
-    await pool.end()
-    
-    console.log(`📋 Retrieved ${receipts.length} receipts from database`)
-    
-    return NextResponse.json(receipts)
-    
+    return NextResponse.json({
+      receipts,
+      stats,
+      pagination: {
+        limit,
+        offset,
+        hasMore: receipts.length === limit
+      }
+    })
   } catch (error) {
-    console.error('❌ Database fetch error:', error)
+    console.error('Error fetching receipts:', error)
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
     return NextResponse.json(
-      { error: 'データベースからの取得に失敗しました' },
+      { 
+        error: 'レシート取得中にエラーが発生しました',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }
