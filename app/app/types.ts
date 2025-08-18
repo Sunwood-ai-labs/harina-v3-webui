@@ -23,4 +23,5 @@ export interface ReceiptData {
   uploader?: string
   items?: ReceiptItem[]
   processed_at?: string
+  image_path?: string
 }
