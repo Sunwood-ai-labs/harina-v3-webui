@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     const timestamp = Date.now()
     const fileExtension = file.name.split('.').pop() || 'jpg'
     const savedFileName = `receipt_${timestamp}.${fileExtension}`
-    const uploadsDir = join(process.cwd(), 'app/public/uploads')
+    const uploadsDir = join(process.cwd(), 'public/uploads')
     imagePath = `/uploads/${savedFileName}`
     const fullPath = join(uploadsDir, savedFileName)
 
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
           const timestamp = Date.now()
           const fileExtension = file.name.split('.').pop() || 'jpg'
           const savedFileName = `receipt_${timestamp}.${fileExtension}`
-          const uploadsDir = join(process.cwd(), 'app/public/uploads')
+          const uploadsDir = join(process.cwd(), 'public/uploads')
           imagePath = `/uploads/${savedFileName}`
           const fullPath = join(uploadsDir, savedFileName)
 
