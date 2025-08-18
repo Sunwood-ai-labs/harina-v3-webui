@@ -9,7 +9,8 @@ services:
       POSTGRES_PASSWORD: receipt_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./database/migration_add_image_data.sql:/docker-entrypoint-initdb.d/02-migration.sql
     ports:
       - "5433:5432"
     networks:
@@ -52,9 +53,10 @@ services:
       - HARINA_API_URL=http://harina:8000
       - NEXT_PUBLIC_API_URL=http://localhost:3000
     ports:
-      - "3003:3000"
-    
-    
+      - "3000:3000"
+    volumes:
+      - ./app/public/uploads:/app/public/uploads
+        
     depends_on:
       postgres:
         condition: service_healthy

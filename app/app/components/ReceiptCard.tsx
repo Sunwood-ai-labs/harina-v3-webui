@@ -15,6 +15,21 @@ export default function ReceiptCard({ receipt, index, onSelect }: ReceiptCardPro
       onClick={() => onSelect(receipt)}
       className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
     >
+      {/* レシート画像プレビュー */}
+      <div className="aspect-[3/4] bg-gray-100 rounded-xl mb-3 overflow-hidden">
+        {receipt.image_path ? (
+          <img
+            src={receipt.image_path}
+            alt={`レシート - ${receipt.store_name}`}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ImageIcon className="text-gray-400" size={24} />
+          </div>
+        )}
+      </div>
+
       <div className="flex items-center space-x-3 mb-3">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${index % 4 === 0 ? 'bg-red-100' :
             index % 4 === 1 ? 'bg-blue-100' :

@@ -73,9 +73,17 @@ export default function PhotoGallery({ receipts, onReceiptSelect, onReceiptDelet
               onClick={() => handleReceiptClick(receipt)}
               className="card p-6 card-hover cursor-pointer group"
             >
-              {/* レシート画像プレビュー（仮想） */}
+              {/* レシート画像プレビュー */}
               <div className="aspect-[3/4] bg-gradient-to-br from-washi-200 to-washi-300 rounded-2xl mb-6 flex items-center justify-center relative overflow-hidden">
-                <ImageIcon className="text-sumi-400" size={40} />
+                {receipt.image_path ? (
+                  <img
+                    src={receipt.image_path}
+                    alt={`レシート - ${receipt.store_name}`}
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <ImageIcon className="text-sumi-400" size={40} />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-sumi-900/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 
                 {/* アクションボタン */}
@@ -135,8 +143,16 @@ export default function PhotoGallery({ receipts, onReceiptSelect, onReceiptDelet
               </div>
 
               {/* レシート画像プレビュー */}
-              <div className="aspect-[3/4] bg-gradient-to-br from-washi-200 to-washi-300 rounded-2xl mb-8 flex items-center justify-center">
-                <ImageIcon className="text-sumi-400" size={60} />
+              <div className="aspect-[3/4] bg-gradient-to-br from-washi-200 to-washi-300 rounded-2xl mb-8 flex items-center justify-center overflow-hidden">
+                {selectedReceipt.image_path ? (
+                  <img
+                    src={selectedReceipt.image_path}
+                    alt={`レシート - ${selectedReceipt.store_name}`}
+                    className="w-full h-full object-cover rounded-2xl"
+                  />
+                ) : (
+                  <ImageIcon className="text-sumi-400" size={60} />
+                )}
               </div>
 
               {/* レシート情報 */}

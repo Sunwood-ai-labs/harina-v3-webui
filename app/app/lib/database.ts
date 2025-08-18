@@ -16,6 +16,7 @@ interface DbReceiptRow {
   total_amount: string;
   payment_method: string;
   processed_at: string;
+  image_path: string;
 }
 
 // データベースから取得するアイテムの型定義
@@ -71,8 +72,9 @@ export async function saveReceiptToDatabase(
       `INSERT INTO receipts (
         filename, store_name, store_address, store_phone, 
         transaction_date, transaction_time, receipt_number,
-        subtotal, tax, total_amount, payment_method, processed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+        subtotal, tax, total_amount, payment_method, processed_at,
+        image_path
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
       RETURNING id`,
       [
         receipt.filename,
@@ -87,6 +89,7 @@ export async function saveReceiptToDatabase(
         receipt.total_amount,
         receipt.payment_method,
         receipt.processed_at || new Date().toISOString(),
+        receipt.image_path,
       ]
     );
 
@@ -211,6 +214,7 @@ export async function getReceiptsFromDatabase(
         payment_method: receiptRow.payment_method,
         items,
         processed_at: receiptRow.processed_at,
+        image_path: receiptRow.image_path,
       });
     }
 
