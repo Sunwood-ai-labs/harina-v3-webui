@@ -1,7 +1,7 @@
 'use client'
 
 import { ReceiptData } from '../types'
-import { Calendar, MapPin, Phone, CreditCard, Receipt, Store, ShoppingBag, Calculator, Tag } from 'lucide-react'
+import { Calendar, MapPin, Phone, CreditCard, Receipt, Store, ShoppingBag, Calculator, Tag, Download, ExternalLink } from 'lucide-react'
 
 interface ReceiptDisplayProps {
   receipt: ReceiptData
@@ -40,13 +40,76 @@ export default function ReceiptDisplay({ receipt }: ReceiptDisplayProps) {
             </div>
           </div>
           
-          <div className="flex justify-center">
-            <div className="max-w-md w-full">
-              <img
-                src={receipt.image_path}
-                alt={`レシート - ${receipt.store_name}`}
-                className="w-full h-auto rounded-2xl shadow-lg border border-washi-300"
-              />
+          <div className="space-y-6">
+            {/* 画像プレビュー */}
+            <div className="flex justify-center">
+              <div className="max-w-2xl w-full">
+                <div className="relative group">
+                  <img
+                    src={receipt.image_path || '/placeholder-receipt.png'}
+                    alt={`レシート - ${receipt.store_name}`}
+                    className="w-full h-auto rounded-2xl shadow-lg border border-washi-300 transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      e.currentTarget.src = '/placeholder-receipt.png'
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300 rounded-2xl"></div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 画像情報 */}
+            <div className="bg-washi-200/60 rounded-2xl p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="font-bold text-sumi-700 text-lg mb-3 flex items-center">
+                    <span className="w-2 h-2 bg-sakura-500 rounded-full mr-3"></span>
+                    画像情報
+                  </h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-sumi-600">ファイル名:</span>
+                      <span className="font-mono text-sumi-800">{receipt.filename}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sumi-600">保存パス:</span>
+                      <span className="font-mono text-sumi-800 text-xs break-all">{receipt.image_path}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sumi-600">処理日時:</span>
+                      <span className="text-sumi-800">{new Date(receipt.processed_at || '').toLocaleString('ja-JP')}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h3 className="font-bold text-sumi-700 text-lg mb-3 flex items-center">
+                    <span className="w-2 h-2 bg-indigo-500 rounded-full mr-3"></span>
+                    画像操作
+                  </h3>
+                  <div className="space-y-2">
+                    <a
+                      href={receipt.image_path}
+                      download={receipt.filename}
+                      className="inline-flex items-center px-4 py-2 bg-indigo-500 text-white rounded-xl hover:bg-indigo-600 transition-colors text-sm font-medium"
+                    >
+                      <Download size={16} className="mr-2" />
+                      画像をダウンロード
+                    </a>
+                    <button
+                      onClick={() => {
+                        if (receipt.image_path) {
+                          window.open(receipt.image_path, '_blank')
+                        }
+                      }}
+                      className="inline-flex items-center px-4 py-2 bg-washi-500 text-white rounded-xl hover:bg-washi-600 transition-colors text-sm font-medium ml-2"
+                    >
+                      <ExternalLink size={16} className="mr-2" />
+                      新規ウィンドウで開く
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
