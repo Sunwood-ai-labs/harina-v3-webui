@@ -7,6 +7,22 @@ import CameraCapture from "./components/CameraCapture";
 import UploaderSelector from "./components/UploaderSelector";
 import { ReceiptData } from "./types";
 import { toast } from "react-toastify";
+import dynamic from 'next/dynamic'; // 👈 dynamic をインポート
+
+// ▼▼▼ DashboardCharts コンポーネントを動的にインポート ▼▼▼
+const DynamicDashboardCharts = dynamic(() => import('./components/DashboardCharts'), {
+  ssr: false, // サーバーサイドレンダリングを無効化
+  loading: () => (
+    <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2 h-[320px] flex justify-center items-center">
+        <p className="text-gray-500">グラフを読み込み中...</p>
+      </div>
+      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3 h-[320px] flex justify-center items-center">
+        <p className="text-gray-500">グラフを読み込み中...</p>
+      </div>
+    </section>
+  ),
+});
 
 // サイドバーコンポーネント
 const Sidebar = ({
@@ -27,7 +43,7 @@ const Sidebar = ({
   ];
 
   return (
-    <aside className="bg-white border-r border-gray-200 sticky top-0 h-screen p-5">
+    <aside className="bg-white border-r border-gray-200 sticky top-0 h-screen p-5 flex flex-col">
       <div className="brand flex items-center gap-2 font-extrabold text-lg mb-4 mx-2">
         🦔 HARINA
         <span className="badge bg-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full">
@@ -121,6 +137,9 @@ export default function Home() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  // ▼▼▼ カテゴリ別支出データを保持するStateを追加 ▼▼▼
+  const [categorySpending, setCategorySpending] = useState<{ [key: string]: number }>({});
+
   // データベースからレシートと統計情報を取得
   const fetchReceipts = async () => {
     try {
@@ -152,6 +171,29 @@ export default function Home() {
   useEffect(() => {
     fetchReceipts();
   }, []);
+
+  // ▼▼▼ レシートデータからカテゴリ別支出を集計するuseEffectを追加 ▼▼▼
+  useEffect(() => {
+    if (receipts.length > 0) {
+      const spending: { [key: string]: number } = {};
+      receipts.forEach(receipt => {
+        receipt.items?.forEach(item => {
+          const category = item.category || '未分類';
+          const price = item.total_price || 0;
+          if (spending[category]) {
+            spending[category] += price;
+          } else {
+            spending[category] = price;
+          }
+        });
+      });
+      // 金額の大きい順にソート
+      const sortedSpending = Object.fromEntries(
+        Object.entries(spending).sort(([, a], [, b]) => b - a)
+      );
+      setCategorySpending(sortedSpending);
+    }
+  }, [receipts]);
 
   // レシート処理完了時のハンドラー
   const handleReceiptProcessed = (receipt: ReceiptData) => {
@@ -316,6 +358,13 @@ export default function Home() {
               )}
             </section>
 
+            {/* ▼▼▼ 動的にインポートしたグラフコンポーネントを配置 ▼▼▼ */}
+            <DynamicDashboardCharts
+              userStats={stats.userStats}
+              categorySpending={categorySpending}
+              isLoading={isLoading}
+            />
+            
             {/* メインコンテンツ */}
             <section className="content-grid w-full">
               <div className="panel bg-white border border-gray-200 rounded-2xl shadow-sm w-full">
@@ -336,12 +385,6 @@ export default function Home() {
                         <th className="text-xs text-gray-500 text-left px-2">
                           カテゴリ
                         </th>
-                        <th className="text-xs text-gray-500 text-left px-2">
-                          支払方法
-                        </th>
-                        <th className="text-xs text-gray-500 text-left px-2">
-                          メモ
-                        </th>
                         <th className="text-xs text-gray-500 text-right px-2">
                           金額
                         </th>
@@ -354,7 +397,7 @@ export default function Home() {
                       {isLoading ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={6}
                             className="px-2 py-8 text-center text-gray-500"
                           >
                             データを読み込み中...
@@ -363,7 +406,7 @@ export default function Home() {
                       ) : receipts.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={6}
                             className="px-2 py-8 text-center text-gray-500"
                           >
                             レシートがありません。右下のボタンからレシートを追加してください。
@@ -393,12 +436,6 @@ export default function Home() {
                             </td>
                             <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
                               {receipt.items?.[0]?.category || "未分類"}
-                            </td>
-                            <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
-                              {receipt.payment_method || "不明"}
-                            </td>
-                            <td className="px-2 py-3 border-t border-b border-gray-200 text-sm">
-                              {receipt.items?.length || 0}点の商品
                             </td>
                             <td className="px-2 py-3 border-t border-b border-gray-200 text-sm text-right font-bold">
                               ¥{receipt.total_amount?.toLocaleString() || "0"}
@@ -509,7 +546,7 @@ export default function Home() {
     <div className="app grid grid-cols-[280px_1fr] min-h-screen">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <section>
+      <section className="overflow-y-auto">
         <Header />
         {renderMainContent()}
       </section>
