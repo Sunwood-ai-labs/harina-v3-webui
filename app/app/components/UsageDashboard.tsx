@@ -302,41 +302,34 @@ export default function UsageDashboard({ receipts }: UsageDashboardProps) {
           </div>
         </div>
 
-        {/* アップロード者別統計 */}
-        <div className="card p-8 card-hover">
-          <h3 className="text-2xl font-bold wa-text-gradient mb-8 tracking-wide">アップロード者別統計</h3>
-          <div className="space-y-6">
-            {stats.uploaderData.map((data, index) => (
-              <div key={data.uploader} className="flex items-center space-x-5">
-                <div className="p-3 bg-washi-200 rounded-xl text-2xl">
+        {/* 👇 新しく追加または修正するセクション */}
+        <div className="card p-8 card-hover lg:col-span-2">
+          <h3 className="text-2xl font-bold wa-text-gradient mb-8 tracking-wide">ユーザー別統計</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {stats.uploaderData.length > 0 ? stats.uploaderData.map((data) => (
+              <div key={data.uploader} className="flex items-center space-x-6 bg-washi-100/50 p-6 rounded-2xl">
+                <div className="p-4 bg-washi-200 rounded-xl text-4xl">
                   {data.uploader === '夫' ? '🤵' : '👰'}
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-bold text-sumi-800 tracking-wide">{data.uploader}</span>
-                    <span className="text-sm text-sumi-600 font-medium">{data.count}件</span>
+                  <div className="flex justify-between items-baseline mb-2">
+                    <span className="text-xl font-bold text-sumi-800">{data.uploader}</span>
+                    <span className="text-sm font-medium text-sumi-600">{data.count.toLocaleString()}件</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4 flex-1">
-                      <div className="flex-1 bg-washi-300 rounded-full h-3 mr-4">
-                        <div
-                          className="wa-gradient-primary h-3 rounded-full transition-all duration-700"
-                          style={{ width: `${data.percentage}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-bold wa-text-gradient w-12 text-right">
-                        {data.percentage}%
-                      </span>
-                    </div>
+                  <div className="w-full bg-washi-300 rounded-full h-3 mb-2">
+                    <div
+                      className="wa-gradient-primary h-3 rounded-full"
+                      style={{ width: `${data.percentage}%` }}
+                    />
                   </div>
-                  <div className="mt-2">
-                    <span className="text-sm font-bold wa-text-gradient">
-                      {formatCurrency(data.amount)}
-                    </span>
-                  </div>
+                  <p className="text-right text-lg font-bold wa-text-gradient">
+                    {formatCurrency(data.amount)}
+                  </p>
                 </div>
               </div>
-            ))}
+            )) : (
+              <p className="text-sumi-500 text-center py-12 text-lg md:col-span-2">データがありません</p>
+            )}
           </div>
         </div>
       </div>
