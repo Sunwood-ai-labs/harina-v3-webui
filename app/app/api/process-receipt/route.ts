@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     file = formData.get('file') as File
     const model = formData.get('model') as string || 'gemini'
+    const uploader = formData.get('uploader') as string || '夫' // 👈 この行を追加
 
     if (!file) {
       return NextResponse.json(
@@ -193,6 +194,7 @@ export async function POST(request: NextRequest) {
     try {
       // XMLをパースしてReceiptDataに変換
       receiptData = await parseXmlToReceiptData(xmlData, file.name, imagePath)
+      receiptData.uploader = uploader; // 👈 パースしたデータにuploaderを追加
       console.log('Parsed receipt data:', receiptData)
     } catch (xmlError) {
       console.error('XML parsing error:', xmlError)
@@ -201,6 +203,7 @@ export async function POST(request: NextRequest) {
       // XMLパースに失敗した場合は正規表現で直接抽出
       try {
         receiptData = parseXmlWithRegex(xmlData, file.name, imagePath)
+        receiptData.uploader = uploader; // 👈 こちらにも追加
         console.log('Regex-parsed receipt data:', receiptData)
       } catch (regexError) {
         console.error('Regex parsing also failed:', regexError)
@@ -221,7 +224,8 @@ export async function POST(request: NextRequest) {
             { name: 'パースエラー商品', category: 'その他', total_price: 1000 }
           ],
           processed_at: new Date().toISOString(),
-          image_path: imagePath || undefined
+          image_path: imagePath || undefined,
+          uploader: uploader // 👈 ダミーデータにもuploaderを追加
         }
       }
     }
@@ -279,7 +283,8 @@ export async function POST(request: NextRequest) {
           { name: 'テスト商品', category: 'その他', total_price: 1000 }
         ],
         processed_at: new Date().toISOString(),
-        image_path: imagePath || undefined
+        image_path: imagePath || undefined,
+        uploader: '夫' // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
       }
       
       // データベースに保存を試行
