@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ReceiptData } from '../../types'
 import { saveReceiptToDatabase } from '../../lib/database'
 import { parseString } from 'xml2js'
+import { writeFile, mkdir } from 'fs/promises'
+import { join } from 'path'
 
 export const dynamic = 'force-dynamic'
 
 // 正規表現を使ってXMLから直接データを抽出する関数（フォールバック）
-function parseXmlWithRegex(xmlData: string, filename: string): ReceiptData {
+function parseXmlWithRegex(xmlData: string, filename: string, imagePath?: string): ReceiptData {
   const extractValue = (tag: string): string => {
     const regex = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`)
     const match = xmlData.match(regex)
@@ -53,12 +55,13 @@ function parseXmlWithRegex(xmlData: string, filename: string): ReceiptData {
     total_amount: parseFloat(extractValue('total')) || 0,
     payment_method: extractValue('method') || 'Unknown',
     items: extractItems(),
-    processed_at: new Date().toISOString()
+    processed_at: new Date().toISOString(),
+    image_path: imagePath
   }
 }
 
 // XMLデータをパースしてReceiptDataに変換する関数
-function parseXmlToReceiptData(xmlData: string, filename: string): Promise<ReceiptData> {
+function parseXmlToReceiptData(xmlData: string, filename: string, imagePath?: string): Promise<ReceiptData> {
   return new Promise((resolve, reject) => {
     // XMLの不正な文字列を修正
     let cleanedXml = xmlData
@@ -96,7 +99,8 @@ function parseXmlToReceiptData(xmlData: string, filename: string): Promise<Recei
             unit_price: parseFloat(item.unit_price?.[0]) || 0,
             total_price: parseFloat(item.total_price?.[0]) || 0
           })) || [],
-          processed_at: new Date().toISOString()
+          processed_at: new Date().toISOString(),
+          image_path: imagePath
         }
 
         resolve(receiptData)
@@ -109,6 +113,7 @@ function parseXmlToReceiptData(xmlData: string, filename: string): Promise<Recei
 
 export async function POST(request: NextRequest) {
   let file: File | null = null
+  let imagePath: string | undefined = undefined
   
   try {
     const formData = await request.formData()
@@ -121,6 +126,26 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // 画像ファイルを保存
+    const timestamp = Date.now()
+    const fileExtension = file.name.split('.').pop() || 'jpg'
+    const savedFileName = `receipt_${timestamp}.${fileExtension}`
+    const uploadsDir = join(process.cwd(), 'app/public/uploads')
+    imagePath = `/uploads/${savedFileName}`
+    const fullPath = join(uploadsDir, savedFileName)
+
+    // アップロードディレクトリが存在しない場合は作成
+    try {
+      await mkdir(uploadsDir, { recursive: true })
+    } catch (error) {
+      // ディレクトリが既に存在する場合は無視
+    }
+
+    // ファイルを保存
+    const arrayBuffer = await file.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    await writeFile(fullPath, buffer)
 
     // HARINAサービスにファイルを送信
     const harinaFormData = new FormData()
@@ -167,7 +192,7 @@ export async function POST(request: NextRequest) {
     
     try {
       // XMLをパースしてReceiptDataに変換
-      receiptData = await parseXmlToReceiptData(xmlData, file.name)
+      receiptData = await parseXmlToReceiptData(xmlData, file.name, imagePath)
       console.log('Parsed receipt data:', receiptData)
     } catch (xmlError) {
       console.error('XML parsing error:', xmlError)
@@ -175,7 +200,7 @@ export async function POST(request: NextRequest) {
       
       // XMLパースに失敗した場合は正規表現で直接抽出
       try {
-        receiptData = parseXmlWithRegex(xmlData, file.name)
+        receiptData = parseXmlWithRegex(xmlData, file.name, imagePath)
         console.log('Regex-parsed receipt data:', receiptData)
       } catch (regexError) {
         console.error('Regex parsing also failed:', regexError)
@@ -195,7 +220,8 @@ export async function POST(request: NextRequest) {
           items: [
             { name: 'パースエラー商品', category: 'その他', total_price: 1000 }
           ],
-          processed_at: new Date().toISOString()
+          processed_at: new Date().toISOString(),
+          image_path: imagePath || undefined
         }
       }
     }
@@ -216,6 +242,27 @@ export async function POST(request: NextRequest) {
     // HARINAサービスエラーの場合、ダミーデータで処理を続行
     if (error instanceof Error && error.message.includes('HARINA service error')) {
       console.log('Creating dummy receipt data due to HARINA service error')
+      
+      // 画像がまだ保存されていない場合は保存を試行
+      if (!imagePath && file) {
+        try {
+          const timestamp = Date.now()
+          const fileExtension = file.name.split('.').pop() || 'jpg'
+          const savedFileName = `receipt_${timestamp}.${fileExtension}`
+          const uploadsDir = join(process.cwd(), 'app/public/uploads')
+          imagePath = `/uploads/${savedFileName}`
+          const fullPath = join(uploadsDir, savedFileName)
+
+          await mkdir(uploadsDir, { recursive: true })
+          const arrayBuffer = await file.arrayBuffer()
+          const buffer = Buffer.from(arrayBuffer)
+          await writeFile(fullPath, buffer)
+        } catch (saveError) {
+          console.error('Failed to save image during error handling:', saveError)
+          imagePath = undefined
+        }
+      }
+      
       const dummyReceiptData: ReceiptData = {
         filename: file?.name || 'unknown_file',
         store_name: 'テスト店舗',
@@ -231,7 +278,8 @@ export async function POST(request: NextRequest) {
         items: [
           { name: 'テスト商品', category: 'その他', total_price: 1000 }
         ],
-        processed_at: new Date().toISOString()
+        processed_at: new Date().toISOString(),
+        image_path: imagePath || undefined
       }
       
       // データベースに保存を試行
