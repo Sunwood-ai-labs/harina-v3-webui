@@ -9,7 +9,8 @@ services:
       POSTGRES_PASSWORD: receipt_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./database/migration_add_image_data.sql:/docker-entrypoint-initdb.d/02-migration.sql
     ports:
       - "5433:5432"
     networks:
@@ -44,12 +45,18 @@ services:
     container_name: receipt_app
     environment:
       - DATABASE_URL=postgresql://receipt_user:receipt_password@postgres:5432/receipt_db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=receipt_db
+      - POSTGRES_USER=receipt_user
+      - POSTGRES_PASSWORD=receipt_password
       - HARINA_API_URL=http://harina:8000
       - NEXT_PUBLIC_API_URL=http://localhost:3000
     ports:
-      - "3003:3000"
-    
-    
+      - "3000:3000"
+    volumes:
+      - ./app/public/uploads:/app/public/uploads
+        
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,7 +66,7 @@ services:
       - receipt_network
     restart: unless-stopped
 
-  # db-ui アプリケーション
+  # db-ui アプリケーション（データベース管理UI）
   # db-ui:
   #   image: ghcr.io/n7olkachev/db-ui:1.1
   #   container_name: db-ui-app
@@ -69,12 +76,13 @@ services:
   #     POSTGRES_PASSWORD: receipt_password
   #     POSTGRES_DB: receipt_db
   #     POSTGRES_PORT: 5432
-  #     # Groq API キーが必要な場合は以下のコメントを外して設定してください
   #   ports:
-  #     - "${DB_UI_PORT_HOST:-3000}:3001"
+  #     - "3001:3001"
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
+  #   networks:
+  #     - receipt_network
   #   restart: unless-stopped
 
 volumes:
