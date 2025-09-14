@@ -2,12 +2,20 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Loader2, Sparkles, Brain, Zap, Paperclip } from 'lucide-react'
+import { Upload, Loader2, Sparkles, Brain, Zap, Paperclip, X, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { ReceiptData } from '../types'
 
 interface ReceiptUploadProps {
   onReceiptProcessed: (receipt: ReceiptData) => void
+}
+
+interface FileProcessingStatus {
+  file: File
+  status: 'waiting' | 'processing' | 'completed' | 'error'
+  result?: ReceiptData
+  error?: string
+  progress?: number
 }
 
 const modelOptions = [
@@ -44,67 +52,149 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedModel, setSelectedModel] = useState('gemini/gemini-2.5-flash')
   const [selectedUploader, setSelectedUploader] = useState('夫')
+  const [fileQueue, setFileQueue] = useState<FileProcessingStatus[]>([])
+  const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const processFile = useCallback(async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.error('画像ファイルを選択してください', {
-        position: "top-center",
-        autoClose: 3000,
-      })
-      return
+  // 単一ファイル処理関数
+  const processSingleFile = useCallback(async (file: File, index: number): Promise<ReceiptData> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('model', selectedModel)
+    formData.append('uploader', selectedUploader)
+
+    const response = await fetch('/api/process-receipt', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error('レシート処理に失敗しました')
     }
 
+    return await response.json()
+  }, [selectedModel, selectedUploader])
+
+  // 複数ファイルの順次処理
+  const processFileQueue = useCallback(async (files: FileProcessingStatus[]) => {
     setIsProcessing(true)
     
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('model', selectedModel)
-      formData.append('uploader', selectedUploader)
+    for (let i = 0; i < files.length; i++) {
+      const fileStatus = files[i]
+      
+      // 現在処理中のファイルインデックスを更新
+      setCurrentProcessingIndex(i)
+      
+      // ファイルステータスを「処理中」に更新
+      setFileQueue(prev => prev.map((item, idx) => 
+        idx === i ? { ...item, status: 'processing' as const } : item
+      ))
 
-      const response = await fetch('/api/process-receipt', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error('レシート処理に失敗しました')
+      try {
+        const result = await processSingleFile(fileStatus.file, i)
+        
+        // 成功時の処理
+        setFileQueue(prev => prev.map((item, idx) => 
+          idx === i ? { 
+            ...item, 
+            status: 'completed' as const, 
+            result 
+          } : item
+        ))
+        
+        onReceiptProcessed(result)
+        
+      } catch (error) {
+        console.error(`Error processing file ${fileStatus.file.name}:`, error)
+        
+        // エラー時の処理
+        setFileQueue(prev => prev.map((item, idx) => 
+          idx === i ? { 
+            ...item, 
+            status: 'error' as const, 
+            error: error instanceof Error ? error.message : 'Unknown error'
+          } : item
+        ))
       }
-
-      const result = await response.json()
-      onReceiptProcessed(result)
-      toast.success('レシートを正常に処理しました！', {
+    }
+    
+    setCurrentProcessingIndex(-1)
+    setIsProcessing(false)
+    
+    // 処理完了の通知
+    const completedCount = files.filter(f => f.status === 'completed').length
+    const errorCount = files.filter(f => f.status === 'error').length
+    
+    if (errorCount === 0) {
+      toast.success(`${completedCount}件のレシートを正常に処理しました！`, {
         position: "top-center",
-        autoClose: 3000,
+        autoClose: 4000,
       })
-    } catch (error) {
-      console.error('Error processing receipt:', error)
-      toast.error('レシート処理中にエラーが発生しました', {
+    } else {
+      toast.warning(`${completedCount}件成功、${errorCount}件エラーがありました`, {
         position: "top-center",
         autoClose: 5000,
       })
-    } finally {
-      setIsProcessing(false)
     }
-  }, [selectedModel, onReceiptProcessed])
+  }, [processSingleFile, onReceiptProcessed])
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+  // ファイル追加処理
+  const addFilesToQueue = useCallback((newFiles: File[]) => {
+    const validFiles = newFiles.filter(file => {
+      if (!file.type.startsWith('image/')) {
+        toast.error(`${file.name} は画像ファイルではありません`, {
+          position: "top-center",
+          autoClose: 3000,
+        })
+        return false
+      }
+      return true
+    })
+
+    if (validFiles.length === 0) return
+
+    const newFileStatuses: FileProcessingStatus[] = validFiles.map(file => ({
+      file,
+      status: 'waiting'
+    }))
+
+    setFileQueue(prev => [...prev, ...newFileStatuses])
+    
+    // 処理中でなければ自動的に処理開始
+    if (!isProcessing) {
+      processFileQueue([...fileQueue, ...newFileStatuses])
+    }
+  }, [fileQueue, isProcessing, processFileQueue])
+
+  // キューをクリア
+  const clearQueue = useCallback(() => {
+    if (!isProcessing) {
+      setFileQueue([])
+    }
+  }, [isProcessing])
+
+  // 個別ファイルを削除
+  const removeFileFromQueue = useCallback((index: number) => {
+    if (!isProcessing) {
+      setFileQueue(prev => prev.filter((_, idx) => idx !== index))
+    }
+  }, [isProcessing])
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return
-    const file = acceptedFiles[0]
-    await processFile(file)
-  }, [processFile])
+    addFilesToQueue(acceptedFiles)
+  }, [addFilesToQueue])
 
-  const handleFileSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (files && files.length > 0) {
-      await processFile(files[0])
+      addFilesToQueue(Array.from(files))
     }
     // ファイル入力をリセット
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [processFile])
+  }, [addFilesToQueue])
 
   const handleFileButtonClick = useCallback(() => {
     fileInputRef.current?.click()
@@ -115,7 +205,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.bmp']
     },
-    multiple: false
+    multiple: true // 複数ファイル対応
   })
 
   const selectedModelData = modelOptions.find(m => m.value === selectedModel)
@@ -188,6 +278,97 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
         </div>
       </div>
 
+      {/* ファイルキュー表示 */}
+      {fileQueue.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-gray-800">
+              処理キュー ({fileQueue.length}件)
+            </h3>
+            {!isProcessing && (
+              <button
+                onClick={clearQueue}
+                className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                キューをクリア
+              </button>
+            )}
+          </div>
+          
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {fileQueue.map((fileStatus, index) => (
+              <div
+                key={`${fileStatus.file.name}-${index}`}
+                className={`flex items-center justify-between p-4 rounded-lg border ${
+                  fileStatus.status === 'completed' ? 'bg-green-50 border-green-200' :
+                  fileStatus.status === 'error' ? 'bg-red-50 border-red-200' :
+                  fileStatus.status === 'processing' ? 'bg-blue-50 border-blue-200' :
+                  'bg-gray-50 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  {fileStatus.status === 'waiting' && <Clock className="text-gray-400" size={20} />}
+                  {fileStatus.status === 'processing' && <Loader2 className="text-blue-500 animate-spin" size={20} />}
+                  {fileStatus.status === 'completed' && <CheckCircle className="text-green-500" size={20} />}
+                  {fileStatus.status === 'error' && <AlertCircle className="text-red-500" size={20} />}
+                  
+                  <div>
+                    <p className="font-medium text-gray-800">{fileStatus.file.name}</p>
+                    <p className="text-sm text-gray-500">
+                      {(fileStatus.file.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                    {fileStatus.error && (
+                      <p className="text-sm text-red-600 mt-1">{fileStatus.error}</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {fileStatus.status === 'waiting' && !isProcessing && (
+                    <button
+                      onClick={() => removeFileFromQueue(index)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                  
+                  {fileStatus.status === 'processing' && (
+                    <div className="text-sm font-medium text-blue-600">
+                      処理中... ({index + 1}/{fileQueue.length})
+                    </div>
+                  )}
+                  
+                  {fileStatus.status === 'completed' && (
+                    <div className="text-sm font-medium text-green-600">完了</div>
+                  )}
+                  
+                  {fileStatus.status === 'error' && (
+                    <div className="text-sm font-medium text-red-600">エラー</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* 全体の進捗表示 */}
+          {isProcessing && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>全体の進捗</span>
+                <span>{currentProcessingIndex + 1} / {fileQueue.length}</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${((currentProcessingIndex + 1) / fileQueue.length) * 100}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ファイルアップロード */}
       <div
         {...getRootProps()}
@@ -236,7 +417,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
                   {isDragActive ? 'ファイルをドロップしてください' : 'レシート画像をアップロード'}
                 </p>
                 <p className="text-sumi-600 text-lg leading-relaxed">
-                  ドラッグ&ドロップまたはクリックしてファイルを選択
+                  複数ファイルの同時アップロード・順次処理に対応
                 </p>
               </div>
               
@@ -265,6 +446,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleFileSelect}
         className="hidden"
       />
