@@ -506,3 +506,58 @@ tbody tr td:last-child {
     grid-template-columns: 1fr 1fr;
   }
 }
+/* Upload Zone */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  transition: all 0.3s ease;
+}
+
+.upload-zone:hover {
+  border-color: var(--accent);
+  background: var(--chip);
+}
+
+.upload-zone-active {
+  border-color: var(--accent);
+  background: var(--chip);
+  transform: scale(1.02);
+}
+
+/* Animation classes */
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.wa-text-gradient {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.wa-gradient-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+.wa-shadow-medium {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}

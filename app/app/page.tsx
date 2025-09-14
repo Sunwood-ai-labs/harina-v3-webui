@@ -202,53 +202,69 @@ export default function Home() {
     setShowFabPop(false);
   };
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (files: File | File[]) => {
     setShowFabPop(false);
     setIsProcessing(true);
     setProcessingSteps(1);
-    setProcessingMessage("ファイルをアップロード中...");
+    
+    const fileArray = Array.isArray(files) ? files : [files];
+    setProcessingMessage(`${fileArray.length}件のファイルをアップロード中...`);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("model", "gemini"); // デフォルトモデル
-      formData.append("uploader", selectedUploader); // 👈 選択されたユーザー情報を追加
-
-      setProcessingSteps(2);
-      setProcessingMessage("HARINA APIで画像を解析中...");
+      let processedCount = 0;
       
-      const response = await fetch("/api/process-receipt", {
-        method: "POST",
-        body: formData,
-      });
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        
+        setProcessingSteps(2);
+        setProcessingMessage(`${i + 1}/${fileArray.length}: ${file.name} を解析中...`);
 
-      if (response.ok) {
-        setProcessingSteps(3);
-        setProcessingMessage("レシートデータを処理中...");
-        
-        const result = await response.json();
-        
-        setProcessingSteps(4);
-        setProcessingMessage("データベースに保存中...");
-        
-        handleReceiptProcessed(result);
-        
-        // データを再取得して統計を更新
-        await fetchReceipts();
-        
-        setProcessingMessage("完了しました！");
-      } else {
-        throw new Error("レシート処理に失敗しました");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("model", "gemini"); // デフォルトモデル
+        formData.append("uploader", selectedUploader);
+
+        const response = await fetch("/api/process-receipt", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (response.ok) {
+          setProcessingSteps(3);
+          setProcessingMessage(`${i + 1}/${fileArray.length}: データを処理中...`);
+
+          const result = await response.json();
+          handleReceiptProcessed(result);
+          processedCount++;
+        } else {
+          console.error(`Failed to process ${file.name}`);
+          toast.error(`${file.name} の処理に失敗しました`);
+        }
       }
+
+      setProcessingSteps(4);
+      setProcessingMessage("データベースを更新中...");
+
+      // データを再取得して統計を更新
+      await fetchReceipts();
+
+      setProcessingMessage(`${processedCount}件の処理が完了しました！`);
+      
+      if (processedCount === fileArray.length) {
+        toast.success(`${processedCount}件のレシートを正常に処理しました！`);
+      } else {
+        toast.warning(`${processedCount}/${fileArray.length}件の処理が完了しました`);
+      }
+      
     } catch (error) {
-      console.error("Error processing receipt:", error);
-      alert("レシート処理中にエラーが発生しました");
+      console.error("Error processing receipts:", error);
+      toast.error("レシート処理中にエラーが発生しました");
     } finally {
       setTimeout(() => {
         setIsProcessing(false);
         setProcessingSteps(1);
         setProcessingMessage("");
-      }, 1000);
+      }, 2000);
     }
   };
 
@@ -563,7 +579,7 @@ export default function Home() {
         {showFabPop && (
           <div className="fab-pop absolute right-0 bottom-16 w-96 bg-white border border-gray-200 rounded-2xl shadow-lg p-3">
             <header className="flex items-center justify-between mb-2">
-              <h4 className="text-sm font-semibold">レシートの取り込み</h4>
+              <h4 className="text-sm font-semibold">レシートの取り込み（複数対応）</h4>
               <button
                 className="btn ghost border border-gray-200 text-gray-700 px-2 py-1 rounded text-xs"
                 onClick={() => setShowFabPop(false)}
@@ -594,14 +610,17 @@ export default function Home() {
                   const input = document.createElement("input");
                   input.type = "file";
                   input.accept = "image/*";
+                  input.multiple = true; // 複数ファイル選択を有効化
                   input.onchange = (e) => {
-                    const file = (e.target as HTMLInputElement).files?.[0];
-                    if (file) handleFileUpload(file);
+                    const files = (e.target as HTMLInputElement).files;
+                    if (files && files.length > 0) {
+                      handleFileUpload(Array.from(files));
+                    }
                   };
                   input.click();
                 }}
               >
-                🗂 画像ファイルを選択
+                🗂 画像ファイルを選択（複数可）
               </div>
               {/* CSVインポートボタンを追加 */}
               <div
@@ -780,7 +799,7 @@ export default function Home() {
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-teal-500 border-t-transparent mx-auto"></div>
               
               <div className="space-y-3">
-                <h3 className="text-xl font-bold text-gray-800">レシート解析中</h3>
+                <h3 className="text-xl font-bold text-gray-800">レシート処理中</h3>
                 <p className="text-gray-600">{processingMessage}</p>
               </div>
               
