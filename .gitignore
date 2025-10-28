@@ -56,4 +56,4 @@ dist/
 *.tar.gz
 .SourceSageAssets/
 app/public/uploads/*.jpg
-
+nginx/certs/*.pem
