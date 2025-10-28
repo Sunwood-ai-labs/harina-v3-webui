@@ -75,6 +75,12 @@
         <subcategory>学習・イベント参加費</subcategory>
         <subcategory>その他</subcategory>
     </category>
+    <category name="割引">
+        <subcategory>値引き</subcategory>
+        <subcategory>クーポン</subcategory>
+        <subcategory>ポイント利用</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
     <category name="その他">
         <subcategory>ギフト・プレゼント</subcategory>
         <subcategory>ペット用品</subcategory>
