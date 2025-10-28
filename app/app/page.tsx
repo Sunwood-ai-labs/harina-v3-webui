@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Dispatch, SetStateAction } from "react";
 import type { RefObject } from "react";
-import { Search, MoreHorizontal, FileText } from "lucide-react";
+import { Search, MoreHorizontal, FileText, Menu, X } from "lucide-react";
 import ReceiptUpload from "./components/ReceiptUpload";
 import CameraCapture from "./components/CameraCapture";
 import UploaderSelector from "./components/UploaderSelector";
 import { ReceiptData } from "./types";
 import { toast } from "react-toastify";
 import dynamic from 'next/dynamic'; // 👈 dynamic をインポート
+import Image from "next/image";
 
 // ▼▼▼ DashboardCharts コンポーネントを動的にインポート ▼▼▼
 const DynamicDashboardCharts = dynamic(() => import('./components/DashboardCharts'), {
@@ -43,9 +44,13 @@ const EXPORT_LABEL_MAP: Record<ExportFormat, string> = {
 const Sidebar = ({
   activeTab,
   setActiveTab,
+  isMobileOpen,
+  onToggle,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  isMobileOpen: boolean;
+  onToggle: Dispatch<SetStateAction<boolean>>;
 }) => {
   const navItems = [
     { id: "dashboard", label: "ダッシュボード" },
@@ -58,8 +63,28 @@ const Sidebar = ({
   ];
 
   return (
-    <aside className="bg-white border-r border-gray-200 sticky top-0 h-screen p-5 flex flex-col">
-      <div className="brand flex items-center gap-2 font-extrabold text-lg mb-4 mx-2">
+    <aside
+      className={`sidebar fixed inset-y-0 left-0 z-40 w-72 max-w-full bg-white border-r border-gray-200 p-5 flex flex-col transform transition-transform duration-200 ease-in-out lg:sticky lg:top-0 lg:h-screen lg:w-auto lg:translate-x-0 lg:shadow-none lg:z-auto ${
+        isMobileOpen ? "translate-x-0 shadow-xl" : "-translate-x-full"
+      }`}
+    >
+      <div className="mb-4 flex items-center justify-between lg:hidden">
+        <div className="brand flex items-center gap-2 font-extrabold text-lg">
+          🦔 HARINA
+          <span className="badge bg-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full">
+            v3
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggle(false)}
+          aria-label="メニューを閉じる"
+          className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-50"
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="brand hidden lg:flex items-center gap-2 font-extrabold text-lg mb-4 mx-2">
         🦔 HARINA
         <span className="badge bg-teal-500 text-white text-xs font-bold px-2 py-1 rounded-full">
           v3
@@ -67,11 +92,14 @@ const Sidebar = ({
         <span className="ml-1 text-gray-500 font-semibold text-sm">Web UI</span>
       </div>
 
-      <nav className="nav grid gap-1">
+      <nav className="nav grid gap-1 flex-1 overflow-y-auto lg:overflow-visible">
         {navItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => setActiveTab(item.id)}
+            onClick={() => {
+              setActiveTab(item.id);
+              onToggle(false);
+            }}
             className={`flex items-center gap-2 text-left px-3 py-2 rounded-lg transition-colors ${
               activeTab === item.id ? "bg-gray-100" : "hover:bg-gray-50"
             }`}
@@ -104,6 +132,7 @@ const Header = ({
   isExporting = false,
   exportingFormat = null,
   exportMenuRef,
+  onMenuClick,
 }: {
   showExportBtn?: boolean;
   showNewBtn?: boolean;
@@ -113,17 +142,28 @@ const Header = ({
   isExporting?: boolean;
   exportingFormat?: ExportFormat | null;
   exportMenuRef?: RefObject<HTMLDivElement>;
+  onMenuClick?: () => void;
 }) => (
   <header className="sticky top-0 bg-gray-50 border-b border-gray-200 p-3 z-10 flex items-center gap-3 justify-between">
-    <div className="search flex items-center gap-2 flex-1 bg-white p-2 rounded-lg border border-gray-200">
-      <Search size={16} />
-      <input
-        placeholder="店舗名、金額、メモで検索…"
-        className="border-none outline-none bg-transparent w-full text-sm"
-      />
-      <div className="chip bg-gray-100 px-2 py-1 rounded text-xs">2025年</div>
-      <div className="chip bg-gray-100 px-2 py-1 rounded text-xs">先月</div>
-      <div className="chip bg-gray-100 px-2 py-1 rounded text-xs">未整理</div>
+    <div className="flex items-center gap-3 flex-1">
+      <button
+        type="button"
+        onClick={onMenuClick}
+        aria-label="メニューを開く"
+        className="rounded-lg border border-gray-200 bg-white p-2 text-gray-600 hover:bg-gray-100 lg:hidden"
+      >
+        <Menu size={18} />
+      </button>
+      <div className="search flex items-center gap-2 flex-1 bg-white p-2 rounded-lg border border-gray-200">
+        <Search size={16} />
+        <input
+          placeholder="店舗名、金額、メモで検索…"
+          className="border-none outline-none bg-transparent w-full text-sm"
+        />
+        <div className="chip bg-gray-100 px-2 py-1 rounded text-xs hidden sm:inline-flex">2025年</div>
+        <div className="chip bg-gray-100 px-2 py-1 rounded text-xs hidden sm:inline-flex">先月</div>
+        <div className="chip bg-gray-100 px-2 py-1 rounded text-xs hidden lg:inline-flex">未整理</div>
+      </div>
     </div>
 
     <div className="toolbar flex gap-2 relative">
@@ -189,6 +229,7 @@ export default function Home() {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [stats, setStats] = useState({
     totalReceipts: 0,
@@ -643,13 +684,20 @@ export default function Home() {
                     }}
                   >
                     {/* 画像サムネイル */}
-                    <div className="aspect-w-3 aspect-h-4 mb-4 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <div className="aspect-w-3 aspect-h-4 mb-4 rounded-lg bg-gray-100 flex items-center justify-center relative overflow-hidden">
                       {receipt.image_path ? (
-                        <img
+                        <Image
                           src={receipt.image_path}
                           alt={`レシート - ${receipt.store_name}`}
-                          className="w-full h-full object-cover rounded-lg"
-                          onError={(e) => { e.currentTarget.src = '/placeholder-receipt.png' }}
+                          fill
+                          className="object-cover rounded-lg"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          onError={(event) => {
+                            const target = event.currentTarget
+                            if (target.src !== '/placeholder-receipt.png') {
+                              target.src = '/placeholder-receipt.png'
+                            }
+                          }}
                         />
                       ) : (
                         // 画像がない場合は、lucide-reactのアイコンを表示
@@ -692,10 +740,23 @@ export default function Home() {
   };
 
   return (
-    <div className="app grid grid-cols-[280px_1fr] min-h-screen">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+    <div className="app relative">
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          role="presentation"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-      <section className="overflow-y-auto">
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isMobileOpen={isSidebarOpen}
+        onToggle={setIsSidebarOpen}
+      />
+
+      <section className="flex-1 overflow-y-auto">
         <Header
           onExportToggle={() => setShowExportMenu((prev) => !prev)}
           showExportMenu={showExportMenu}
@@ -703,6 +764,7 @@ export default function Home() {
           isExporting={exportingFormat !== null}
           exportingFormat={exportingFormat}
           exportMenuRef={exportMenuRef}
+          onMenuClick={() => setIsSidebarOpen(true)}
         />
         {renderMainContent()}
       </section>
@@ -806,16 +868,21 @@ export default function Home() {
                     レシート画像
                   </h3>
                   <div className="flex justify-center">
-                    <div className="relative group">
-                      <img
+                    <div className="relative group max-w-full max-h-64">
+                      <Image
                         src={currentReceipt.image_path}
                         alt={`レシート - ${currentReceipt.store_name}`}
-                        className="max-w-full max-h-64 object-contain rounded-lg shadow-md border border-washi-300"
-                        onError={(e) => {
-                          e.currentTarget.src = '/placeholder-receipt.png'
+                        width={480}
+                        height={640}
+                        className="h-auto w-auto max-h-64 rounded-lg border border-washi-300 object-contain shadow-md"
+                        onError={(event) => {
+                          const target = event.currentTarget
+                          if (target.src !== '/placeholder-receipt.png') {
+                            target.src = '/placeholder-receipt.png'
+                          }
                         }}
                       />
-                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-10 transition-all duration-300 rounded-lg"></div>
+                      <div className="pointer-events-none absolute inset-0 rounded-lg bg-black bg-opacity-0 transition-all duration-300 group-hover:bg-opacity-10"></div>
                     </div>
                   </div>
                 </div>
