@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, Loader2, Sparkles, Brain, Zap, Paperclip, X, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import { toast } from 'react-toastify'
 import { ReceiptData } from '../types'
 
 interface ReceiptUploadProps {
-  onReceiptProcessed: (receipt: ReceiptData) => void
+  onReceiptProcessed?: (receipt: ReceiptData) => void
+  onUpload?: (files: File | File[]) => Promise<void> | void
 }
 
 interface FileProcessingStatus {
@@ -48,13 +49,18 @@ const modelOptions = [
   },
 ]
 
-export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps) {
+export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptUploadProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [selectedModel, setSelectedModel] = useState('gemini/gemini-2.5-flash')
   const [selectedUploader, setSelectedUploader] = useState('夫')
   const [fileQueue, setFileQueue] = useState<FileProcessingStatus[]>([])
   const [currentProcessingIndex, setCurrentProcessingIndex] = useState(-1)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const onUploadRef = useRef<ReceiptUploadProps['onUpload']>()
+
+  useEffect(() => {
+    onUploadRef.current = onUpload
+  }, [onUpload])
 
   // 単一ファイル処理関数
   const processSingleFile = useCallback(async (file: File, index: number): Promise<ReceiptData> => {
@@ -102,7 +108,7 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
           } : item
         ))
         
-        onReceiptProcessed(result)
+        onReceiptProcessed?.(result)
         
       } catch (error) {
         console.error(`Error processing file ${fileStatus.file.name}:`, error)
@@ -152,6 +158,12 @@ export default function ReceiptUpload({ onReceiptProcessed }: ReceiptUploadProps
     })
 
     if (validFiles.length === 0) return
+
+    const externalUpload = onUploadRef.current
+    if (externalUpload) {
+      void externalUpload(validFiles.length === 1 ? validFiles[0] : validFiles)
+      return
+    }
 
     const newFileStatuses: FileProcessingStatus[] = validFiles.map(file => ({
       file,

@@ -12,7 +12,7 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/migration_add_image_data.sql:/docker-entrypoint-initdb.d/02-migration.sql
     ports:
-      - "5433:5432"
+      - "5436:5432"
     networks:
       - receipt_network
     healthcheck:
@@ -51,9 +51,9 @@ services:
       - POSTGRES_USER=receipt_user
       - POSTGRES_PASSWORD=receipt_password
       - HARINA_API_URL=http://harina:8000
-      - NEXT_PUBLIC_API_URL=http://localhost:3000
+      - NEXT_PUBLIC_API_URL=https://localhost
     ports:
-      - "3000:3000"
+      - "3010:3000"
     volumes:
       - ./app/public/uploads:/app/public/uploads
         
@@ -66,24 +66,61 @@ services:
       - receipt_network
     restart: unless-stopped
 
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: receipt_nginx
+    depends_on:
+      app:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "4483:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - receipt_network
+    restart: unless-stopped
+
+  discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: receipt_discord_bot
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_ALLOWED_CHANNEL_IDS=${DISCORD_ALLOWED_CHANNEL_IDS:-}
+      - RECEIPT_API_URL=http://app:3000/api/process-receipt
+      - RECEIPT_MODEL=${DISCORD_RECEIPT_MODEL:-gemini}
+      - RECEIPT_UPLOADER=${DISCORD_RECEIPT_UPLOADER:-discord}
+      - DISCORD_MAX_FILE_MB=${DISCORD_MAX_FILE_MB:-15}
+      - DISCORD_CHANNEL_UPLOADERS=${DISCORD_CHANNEL_UPLOADERS:-}
+      - DISCORD_RECEIPT_BASE_URL=${DISCORD_RECEIPT_BASE_URL:-https://localhost}
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - receipt_network
+    restart: unless-stopped
+
   # db-ui アプリケーション（データベース管理UI）
-  # db-ui:
-  #   image: ghcr.io/n7olkachev/db-ui:1.1
-  #   container_name: db-ui-app
-  #   environment:
-  #     POSTGRES_HOST: postgres
-  #     POSTGRES_USER: receipt_user
-  #     POSTGRES_PASSWORD: receipt_password
-  #     POSTGRES_DB: receipt_db
-  #     POSTGRES_PORT: 5432
-  #   ports:
-  #     - "3001:3001"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - receipt_network
-  #   restart: unless-stopped
+  db-ui:
+    image: ghcr.io/sunwood-ai-labs/db-ui:latest
+    container_name: receipt_db_ui
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: receipt_user
+      POSTGRES_PASSWORD: receipt_password
+      POSTGRES_DB: receipt_db
+      POSTGRES_PORT: 5432
+    ports:
+      - "3011:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - receipt_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:

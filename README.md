@@ -20,6 +20,7 @@ HARINAのCLIをバックエンドにしたDocker-composeベースのレシート
 - **Backend**: HARINA v3 CLI (FastAPI) - レシート認識API
 - **Frontend**: React + TypeScript - ユーザーインターフェース  
 - **Database**: PostgreSQL - レシートデータ保存
+- **Discord Bot**: discord.py - Discordからの画像投稿を受け付け
 - **Container**: Docker Compose - 統合環境
 
 ## 🚀 クイックスタート
@@ -39,7 +40,50 @@ OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-### 🚀 2. アプリケーションの起動
+### 🔒 1.5 HTTPS用証明書の準備（nginxリバースプロキシ）
+
+`docker-compose` には HTTPS 対応の nginx リバースプロキシが含まれています。公開環境では信頼できる
+証明書を、開発環境では自己署名証明書を下記のパスに配置してください。
+
+```text
+nginx/certs/fullchain.pem   # サーバー証明書 (チェーン付き)
+nginx/certs/privkey.pem     # 秘密鍵
+```
+
+自己署名証明書を生成する場合は次のコマンドが利用できます。
+
+```bash
+openssl req -x509 -nodes -newkey rsa:4096 \
+  -keyout nginx/certs/privkey.pem \
+  -out nginx/certs/fullchain.pem \
+  -days 365 \
+  -subj "/CN=localhost"
+```
+
+ブラウザで警告が表示される場合は、生成した証明書を信頼済みに追加してください。
+
+### 🤖 1.6 Discordボット用環境変数の設定（任意）
+
+Discordから画像をアップロードしたい場合は、`.env` にボットのトークン等を設定します。
+
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_ALLOWED_CHANNEL_IDS=123456789012345678  # カンマ区切りで複数指定可
+DISCORD_RECEIPT_MODEL=gemini
+DISCORD_RECEIPT_UPLOADER=discord
+DISCORD_CHANNEL_UPLOADERS=v3_maki:maki,v3_yome:yome
+DISCORD_RECEIPT_BASE_URL=https://localhost
+```
+
+> **注意:** DiscordのBot設定で「MESSAGE CONTENT INTENT」を有効にし、添付ファイルを扱うチャンネルIDを指定すると誤反応を防げます。
+
+`DISCORD_CHANNEL_UPLOADERS` に `チャンネル名:アップローダー` の形式で指定すると、チャンネル単位でアップロード者名を上書きできます（カンマ区切りで複数指定可）。例では `#v3_maki` に投稿された画像は `maki`、`#v3_yome` は `yome` として保存されます。
+
+`DISCORD_RECEIPT_BASE_URL` を設定すると、Discordのスレッド内に登録済みレシートの共有URL（例: `https://localhost/receipts/123`）が自動で表示されます。
+
+複数画像を同時に投稿した場合は、それぞれ個別の進捗メッセージが同じスレッドに投稿され、解析結果が順次表示されます。処理完了後はスレッドが自動でアーカイブされます。
+
+### 2. アプリケーションの起動
 
 ```bash
 # Docker Composeでアプリケーション全体を起動
@@ -48,8 +92,9 @@ docker-compose up --build
 
 ### 🌐 3. アクセス
 
-- **フロントエンド**: http://localhost:3000
-- **バックエンドAPI**: http://localhost:8001
+- **フロントエンド (nginx経由)**: https://localhost
+- **フロントエンド (開発用ポート直接)**: http://localhost:3010
+- **バックエンドAPI (harina)**: http://localhost:8001
 - **API ドキュメント**: http://localhost:8001/docs
 - **データベース管理UI**: http://localhost:3001
 
@@ -63,6 +108,7 @@ docker-compose up --build
 - レシート履歴一覧（データベース連携）
 - リアルタイム統計情報表示
 - レスポンシブデザイン
+- `/receipts/{id}` の共有URLでレシート詳細を参照可能
 
 ### 🧠 バックエンド (HARINA CLI)
 - 複数AIモデル対応
@@ -74,6 +120,12 @@ docker-compose up --build
 - レシート情報永続化
 - 商品情報管理
 - 履歴機能
+
+### Discordボット
+- 画像添付を検知してレシート解析をトリガー（1メッセージ内の複数画像にも対応）
+- 解析結果（店舗名・合計金額・アイテム）をチャンネルへ返信
+- チャンネルIDで対象範囲を制御可能
+- レシート登録後は共有URLをスレッドに自動投稿
 
 ## 🛠️ 開発
 
@@ -100,6 +152,20 @@ docker-compose logs -f backend
 docker-compose logs -f frontend
 docker-compose logs -f postgres
 ```
+
+### Discordボットの開発メモ
+
+```bash
+# Discordボットのみローカルで起動
+cd discord-bot
+python -m venv .venv
+source .venv/bin/activate  # Windows は .venv\\Scripts\\activate
+pip install -r requirements.txt
+export DISCORD_BOT_TOKEN=your-token
+python bot.py
+```
+
+> Docker Compose でサービスを起動すると `discord-bot` コンテナが自動で立ち上がります。
 
 ## 📁 プロジェクト構造
 
