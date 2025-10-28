@@ -12,6 +12,7 @@ import {
   LineElement,
   Title,
 } from 'chart.js';
+import { ReceiptData } from '../types';
 
 // Chart.js の必要なモジュールを登録
 ChartJS.register(
@@ -89,36 +90,48 @@ const CategorySpendingLineChart = ({ categorySpending }: { categorySpending: { [
 
 
 // --- 上記2つのグラフをまとめるコンポーネント ---
-interface DashboardChartsProps {
-    userStats: { uploader: string; totalAmount: number; receiptCount: number }[];
-    categorySpending: { [key: string]: number };
-    isLoading: boolean;
+interface StatsState {
+  totalReceipts: number;
+  totalAmount: number;
+  totalItems: number;
+  avgAmount: number;
+  userStats: { uploader: string; totalAmount: number; receiptCount: number }[];
 }
 
-export default function DashboardCharts({ userStats, categorySpending, isLoading }: DashboardChartsProps) {
-    if (isLoading) {
-        return (
-            <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-                <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2 animate-pulse h-[320px]"></div>
-                <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3 animate-pulse h-[320px]"></div>
-            </section>
-        );
-    }
+interface DashboardChartsProps {
+  receipts: ReceiptData[];
+  categorySpending: { [key: string]: number };
+  stats: StatsState;
+}
 
+export default function DashboardCharts({ receipts, categorySpending, stats }: DashboardChartsProps) {
+  const userStats = stats.userStats ?? [];
+
+  const isLoading = receipts.length === 0 && userStats.length === 0 && Object.keys(categorySpending).length === 0;
+
+  if (isLoading) {
     return (
-        <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-            <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2">
-                <h3 className="text-lg font-bold mb-4">ユーザー別支出割合</h3>
-                <div className="relative h-64">
-                    <UserSpendingPieChart userStats={userStats} />
-                </div>
-            </div>
-            <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3">
-                <h3 className="text-lg font-bold mb-4">カテゴリ別支出</h3>
-                <div className="relative h-64">
-                    <CategorySpendingLineChart categorySpending={categorySpending} />
-                </div>
-            </div>
-        </section>
+      <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+        <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2 animate-pulse h-[320px]"></div>
+        <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3 animate-pulse h-[320px]"></div>
+      </section>
     );
+  }
+
+  return (
+    <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2">
+        <h3 className="text-lg font-bold mb-4">ユーザー別支出割合</h3>
+        <div className="relative h-64">
+          <UserSpendingPieChart userStats={userStats} />
+        </div>
+      </div>
+      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3">
+        <h3 className="text-lg font-bold mb-4">カテゴリ別支出</h3>
+        <div className="relative h-64">
+          <CategorySpendingLineChart categorySpending={categorySpending} />
+        </div>
+      </div>
+    </section>
+  );
 }

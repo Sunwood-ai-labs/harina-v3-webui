@@ -104,23 +104,23 @@ services:
     restart: unless-stopped
 
   # db-ui アプリケーション（データベース管理UI）
-  # db-ui:
-  #   image: ghcr.io/n7olkachev/db-ui:1.1
-  #   container_name: db-ui-app
-  #   environment:
-  #     POSTGRES_HOST: postgres
-  #     POSTGRES_USER: receipt_user
-  #     POSTGRES_PASSWORD: receipt_password
-  #     POSTGRES_DB: receipt_db
-  #     POSTGRES_PORT: 5432
-  #   ports:
-  #     - "3001:3001"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - receipt_network
-  #   restart: unless-stopped
+  db-ui:
+    image: ghcr.io/sunwood-ai-labs/db-ui:1.1
+    container_name: receipt_db_ui
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: receipt_user
+      POSTGRES_PASSWORD: receipt_password
+      POSTGRES_DB: receipt_db
+      POSTGRES_PORT: 5432
+    ports:
+      - "3011:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - receipt_network
+    restart: unless-stopped
 
 volumes:
   postgres_data:

@@ -82,11 +82,11 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
               JSONを確認
             </Link>
             <Link
-              href="/"
+              href="/receipts"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 text-white shadow-sm hover:bg-teal-600 transition-colors"
             >
               <ChevronLeft size={16} />
-              ダッシュボードへ戻る
+              レシート一覧へ戻る
             </Link>
           </div>
         </div>
