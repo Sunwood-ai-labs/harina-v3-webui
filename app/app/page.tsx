@@ -10,6 +10,7 @@ import { ReceiptData } from "./types";
 import { toast } from "react-toastify";
 import dynamic from 'next/dynamic'; // 👈 dynamic をインポート
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 // ▼▼▼ DashboardCharts コンポーネントを動的にインポート ▼▼▼
 const DynamicDashboardCharts = dynamic(() => import('./components/DashboardCharts'), {
@@ -214,15 +215,11 @@ const Header = ({
 );
 
 export default function Home() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [currentReceipt, setCurrentReceipt] = useState<ReceiptData | null>(
-    null
-  );
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [showFabPop, setShowFabPop] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string>("");
   const [processingSteps, setProcessingSteps] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingMessage, setProcessingMessage] = useState("");
@@ -243,17 +240,6 @@ export default function Home() {
 
   // ▼▼▼ カテゴリ別支出データを保持するStateを追加 ▼▼▼
   const [categorySpending, setCategorySpending] = useState<{ [key: string]: number }>({});
-
-  useEffect(() => {
-    if (currentReceipt?.id) {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      if (origin) {
-        setShareUrl(`${origin}/receipts/${currentReceipt.id}`);
-        return;
-      }
-    }
-    setShareUrl("");
-  }, [currentReceipt?.id]);
 
   // データベースからレシートと統計情報を取得
   const fetchReceipts = async () => {
@@ -327,9 +313,12 @@ export default function Home() {
 
   // レシート処理完了時のハンドラー
   const handleReceiptProcessed = (receipt: ReceiptData) => {
-    setCurrentReceipt(receipt);
-    setShowModal(true);
     setShowFabPop(false);
+    if (receipt?.id) {
+      router.push(`/receipts/${receipt.id}`);
+    } else {
+      fetchReceipts();
+    }
   };
 
   const handleFileUpload = async (files: File | File[]) => {
@@ -445,15 +434,6 @@ export default function Home() {
         setProcessingSteps(1);
         setProcessingMessage("");
       }, 2000);
-    }
-  };
-
-  const confirmReceipt = () => {
-    if (currentReceipt) {
-      // データベースに既に保存されているので、UIを更新
-      fetchReceipts();
-      setShowModal(false);
-      setCurrentReceipt(null);
     }
   };
 
@@ -620,8 +600,9 @@ export default function Home() {
                             key={receipt.id}
                             className="hover:bg-gray-50 cursor-pointer"
                             onClick={() => {
-                              setCurrentReceipt(receipt)
-                              setShowModal(true)
+                              if (receipt.id) {
+                                router.push(`/receipts/${receipt.id}`)
+                              }
                             }}
                           >
                             <td className="px-2 py-3 border-t border-b border-l border-gray-200 rounded-l-lg text-sm">
@@ -691,8 +672,9 @@ export default function Home() {
                     key={receipt.id}
                     className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-lg transition-shadow cursor-pointer"
                     onClick={() => {
-                      setCurrentReceipt(receipt);
-                      setShowModal(true);
+                      if (receipt.id) {
+                        router.push(`/receipts/${receipt.id}`)
+                      }
                     }}
                   >
                     {/* 画像サムネイル */}
@@ -856,199 +838,6 @@ export default function Home() {
           </div>
         )}
       </div>
-
-      {/* 結果確認モーダル */}
-      {showModal && currentReceipt && (
-        <div className="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="sheet bg-white rounded-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <header className="flex items-center justify-between p-4 border-b">
-              <strong className="text-lg font-bold">抽出結果を確認</strong>
-              <div className="flex items-center gap-2">
-                {shareUrl && (
-                  <button
-                    className="btn ghost border border-teal-200 text-teal-600 px-3 py-2 rounded"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(shareUrl)
-                        toast.success('共有リンクをコピーしました')
-                      } catch (error) {
-                        console.error('Failed to copy receipt url:', error)
-                        if (typeof window !== 'undefined') {
-                          window.prompt('以下のURLをコピーしてください', shareUrl)
-                        }
-                        toast.info('クリップボードのアクセスに失敗したため、手動でコピーしてください')
-                      }
-                    }}
-                  >
-                    リンクをコピー
-                  </button>
-                )}
-                <button
-                  className="btn ghost border border-gray-200 text-gray-700 px-3 py-2 rounded"
-                  onClick={() => {
-                    setShowModal(false)
-                    setCurrentReceipt(null)
-                  }}
-                >
-                  閉じる
-                </button>
-              </div>
-            </header>
-
-            <div className="body p-4 space-y-6">
-              {shareUrl && (
-                <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-teal-700 mb-2 flex items-center gap-2">
-                    <span>🔗 共有リンク</span>
-                  </h3>
-                  <a
-                    href={shareUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-teal-600 underline break-all hover:text-teal-700"
-                  >
-                    {shareUrl}
-                  </a>
-                </div>
-              )}
-
-              {/* レシート画像 */}
-              {currentReceipt.image_path && (
-                <div className="bg-gradient-to-r from-sakura-50 to-indigo-50 p-4 rounded-lg border border-washi-200">
-                  <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
-                    <span className="mr-2">📄</span>
-                    レシート画像
-                  </h3>
-                  <div className="flex justify-center">
-                    <div className="relative group max-w-full max-h-64">
-                      <Image
-                        src={currentReceipt.image_path}
-                        alt={`レシート - ${currentReceipt.store_name}`}
-                        width={480}
-                        height={640}
-                        className="h-auto w-auto max-h-64 rounded-lg border border-washi-300 object-contain shadow-md"
-                        onError={(event) => {
-                          const target = event.currentTarget
-                          if (target.src !== '/placeholder-receipt.png') {
-                            target.src = '/placeholder-receipt.png'
-                          }
-                        }}
-                      />
-                      <div className="pointer-events-none absolute inset-0 rounded-lg bg-black bg-opacity-0 transition-all duration-300 group-hover:bg-opacity-10"></div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 店舗情報 */}
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">🏪 店舗情報</h3>
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">店舗名</label>
-                    <p className="text-lg font-bold text-gray-800">{currentReceipt.store_name}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">住所</label>
-                    <p className="text-gray-700">{currentReceipt.store_address || '住所不明'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">電話番号</label>
-                    <p className="text-gray-700">{currentReceipt.store_phone || '電話番号不明'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 取引情報 */}
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">📅 取引情報</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">取引日</label>
-                    <p className="text-lg font-bold text-gray-800">{currentReceipt.transaction_date}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">取引時刻</label>
-                    <p className="text-lg font-bold text-gray-800">{currentReceipt.transaction_time}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">レシート番号</label>
-                    <p className="text-gray-700">{currentReceipt.receipt_number || '番号不明'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-semibold text-gray-600">支払方法</label>
-                    <p className="text-gray-700">{currentReceipt.payment_method}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 商品一覧 */}
-              <div className="bg-green-50 p-4 rounded-lg">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">🛒 購入商品 ({currentReceipt.items?.length || 0}点)</h3>
-                <div className="space-y-3">
-                  {currentReceipt.items?.map((item, index) => (
-                    <div key={index} className="bg-white p-3 rounded border border-gray-200">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800">{item.name}</p>
-                          <div className="flex gap-4 text-sm text-gray-600 mt-1">
-                            <span className="bg-blue-100 px-2 py-1 rounded text-xs">{item.category}</span>
-                            {item.subcategory && (
-                              <span className="bg-gray-100 px-2 py-1 rounded text-xs">{item.subcategory}</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-600">
-                            {item.quantity}個 × ¥{item.unit_price?.toLocaleString()}
-                          </p>
-                          <p className="font-bold text-lg text-gray-800">
-                            ¥{item.total_price?.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 金額情報 */}
-              <div className="bg-yellow-50 p-4 rounded-lg">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">💰 金額詳細</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">小計</span>
-                    <span className="font-semibold">¥{currentReceipt.subtotal?.toLocaleString()}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">税額</span>
-                    <span className="font-semibold">¥{currentReceipt.tax?.toLocaleString() || '0'}</span>
-                  </div>
-                  <div className="border-t pt-2 flex justify-between">
-                    <span className="text-lg font-bold text-gray-800">合計金額</span>
-                    <span className="text-2xl font-bold text-green-600">¥{currentReceipt.total_amount?.toLocaleString()}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-semibold"
-                  onClick={() => setShowModal(false)}
-                >
-                  閉じる
-                </button>
-                <button
-                  className="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold"
-                  onClick={confirmReceipt}
-                >
-                  ✅ 確定して保存
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* プログレスバーモーダル */}
       {isProcessing && (

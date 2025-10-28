@@ -18,6 +18,24 @@
   --radius: 14px;
 }
 
+.bg-washi-50 { background-color: #fdfdfb; }
+.bg-washi-100 { background-color: #f7f5f2; }
+.bg-washi-200 { background-color: #ebe7e0; }
+.bg-washi-300 { background-color: #ded8cf; }
+.bg-washi-400 { background-color: #cfc7bb; }
+.bg-washi-500 { background-color: #bfb5a6; }
+.text-sumi-900 { color: #1f2937; }
+.text-sumi-700 { color: #374151; }
+.text-sumi-600 { color: #4b5563; }
+.text-sumi-500 { color: #6b7280; }
+.border-washi-100 { border-color: #f7f5f2; }
+.border-washi-200 { border-color: #ebe7e0; }
+.border-washi-300 { border-color: #ded8cf; }
+.border-washi-400 { border-color: #cfc7bb; }
+.bg-matcha-50 { background-color: #f6f8f4; }
+.border-matcha-300 { border-color: #b5cfa3; }
+.text-matcha-900 { color: #3c522d; }
+
 * {
   box-sizing: border-box;
 }
