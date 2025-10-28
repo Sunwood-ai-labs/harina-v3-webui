@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, Download, MapPin, Phone, Store, Wallet } from 'lucide-react'
 import { getReceiptById } from '../../lib/database'
+import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
 
 interface ReceiptDetailPageProps {
   params: {
@@ -147,7 +148,7 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
                 <span className="text-sumi-500">小計</span>
                 <span className="text-sumi-900 font-semibold">{totalFormatter.format(receipt.subtotal || 0)}</span>
               </div>
-              <div className="flex justify_between items-center p-3 rounded-2xl bg-washi-100 border border-washi-300 text-sm">
+              <div className="flex justify-between items-center p-3 rounded-2xl bg-washi-100 border border-washi-300 text-sm">
                 <span className="text-sumi-500">税額</span>
                 <span className="text-sumi-900 font-semibold">{totalFormatter.format(receipt.tax || 0)}</span>
               </div>
@@ -189,15 +190,25 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
               </thead>
               <tbody className="bg-white divide-y divide-washi-100">
                 {receipt.items && receipt.items.length > 0 ? (
-                  receipt.items.map((item, index) => (
-                    <tr key={`${item.name}-${index}`} className="hover:bg-washi-50">
-                      <td className="px-4 py-3 text-sm text-sumi-900 font-medium">{item.name}</td>
-                      <td className="px-4 py-3 text-sm text-sumi-500">{item.category || '未分類'}</td>
-                      <td className="px-4 py-3 text-sm text-sumi-900 text-right">{item.quantity ?? 1}</td>
-                      <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.unit_price ?? 0)}</td>
-                      <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.total_price ?? 0)}</td>
-                    </tr>
-                  ))
+                  receipt.items.map((item, index) => {
+                    const categoryLabel = getCategoryLabel(item.category);
+                    const categoryClasses = getCategoryBadgeClasses(item.category);
+
+                    return (
+                      <tr key={`${item.name}-${index}`} className="hover:bg-washi-50">
+                        <td className="px-4 py-3 text-sm text-sumi-900 font-medium">{item.name}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${categoryClasses}`}>
+                            <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
+                            {categoryLabel}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{item.quantity ?? 1}</td>
+                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.unit_price ?? 0)}</td>
+                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.total_price ?? 0)}</td>
+                      </tr>
+                    )
+                  })
                 ) : (
                   <tr>
                     <td className="px-4 py-6 text-center text-sm text-sumi-500" colSpan={5}>

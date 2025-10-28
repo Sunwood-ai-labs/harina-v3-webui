@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import dynamic from "next/dynamic";
 import {
   Search,
   MoreHorizontal,
@@ -20,20 +19,7 @@ import ReceiptUpload from "../../components/ReceiptUpload";
 import CameraCapture from "../../components/CameraCapture";
 import UploaderSelector from "../../components/UploaderSelector";
 import { ReceiptData } from "../../types";
-
-const DynamicDashboardCharts = dynamic(() => import("../../components/DashboardCharts"), {
-  ssr: false,
-  loading: () => (
-    <section className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-2 h-[320px] flex justify-center items-center">
-        <p className="text-gray-500">グラフを読み込み中...</p>
-      </div>
-      <div className="panel bg-white border border-gray-200 rounded-2xl p-4 shadow-sm lg:col-span-3 h-[320px] flex justify-center items-center">
-        <p className="text-gray-500">グラフを読み込み中...</p>
-      </div>
-    </section>
-  ),
-});
+import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryStyles";
 
 type ExportFormat = "csv" | "json" | "zip";
 
@@ -78,7 +64,6 @@ export default function ReceiptsPage() {
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
-  const [categorySpending, setCategorySpending] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     fetchReceipts();
@@ -96,26 +81,6 @@ export default function ReceiptsPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
-
-  useEffect(() => {
-    if (receipts.length === 0) {
-      setCategorySpending({});
-      return;
-    }
-
-    const spending: Record<string, number> = {};
-    receipts.forEach((receipt) => {
-      receipt.items?.forEach((item) => {
-        if (!item.category) return;
-        spending[item.category] = (spending[item.category] || 0) + (item.total_price || 0);
-      });
-    });
-
-    const sorted = Object.fromEntries(
-      Object.entries(spending).sort(([, a], [, b]) => b - a)
-    );
-    setCategorySpending(sorted);
-  }, [receipts]);
 
   const fetchReceipts = async () => {
     try {
@@ -353,12 +318,6 @@ export default function ReceiptsPage() {
           />
         </section>
 
-        <DynamicDashboardCharts
-          receipts={receipts}
-          categorySpending={categorySpending}
-          stats={stats}
-        />
-
         <section className="panel bg-white border border-washi-300 rounded-3xl shadow-sm">
           <div className="px-6 py-4 border-b border-washi-200 flex items-center justify-between">
             <h2 className="text-lg font-bold text-sumi-900">最近のレシート</h2>
@@ -397,31 +356,42 @@ export default function ReceiptsPage() {
                     </td>
                   </tr>
                 ) : (
-                  receipts.slice(0, 6).map((receipt) => (
-                    <tr
-                      key={receipt.id}
-                      className="hover:bg-washi-100 cursor-pointer"
-                      onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
-                    >
-                      <td className="px-3 py-3 text-sm text-sumi-700">{receipt.transaction_date || "日付不明"}</td>
-                      <td className="px-3 py-3 text-sm text-sumi-700">{receipt.store_name || "店舗名不明"}</td>
-                      <td className="px-3 py-3 text-sm text-sumi-700">
-                        <span className="inline-flex items-center gap-1">
-                          {receipt.uploader === "夫" ? "🤵" : "👰"}
-                          <span>{receipt.uploader || "夫"}</span>
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-sm text-sumi-600">{receipt.items?.[0]?.category || "未分類"}</td>
-                      <td className="px-3 py-3 text-sm text-sumi-900 text-right font-semibold">
-                        ¥{receipt.total_amount?.toLocaleString() || "0"}
-                      </td>
-                      <td className="px-3 py-3 text-sm">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs text-teal-700">
-                          確定
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  receipts.slice(0, 6).map((receipt) => {
+                    const primaryCategory = resolvePrimaryCategory(receipt);
+                    const categoryLabel = getCategoryLabel(primaryCategory);
+                    const categoryClasses = getCategoryBadgeClasses(primaryCategory);
+
+                    return (
+                      <tr
+                        key={receipt.id}
+                        className="hover:bg-washi-100 cursor-pointer"
+                        onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
+                      >
+                        <td className="px-3 py-3 text-sm text-sumi-700">{receipt.transaction_date || "日付不明"}</td>
+                        <td className="px-3 py-3 text-sm text-sumi-700">{receipt.store_name || "店舗名不明"}</td>
+                        <td className="px-3 py-3 text-sm text-sumi-700">
+                          <span className="inline-flex items-center gap-1">
+                            {receipt.uploader === "夫" ? "🤵" : "👰"}
+                            <span>{receipt.uploader || "夫"}</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-sumi-600">
+                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${categoryClasses}`}>
+                            <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
+                            {categoryLabel}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-sumi-900 text-right font-semibold">
+                          ¥{receipt.total_amount?.toLocaleString() || "0"}
+                        </td>
+                        <td className="px-3 py-3 text-sm">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-xs text-teal-700">
+                            確定
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -448,50 +418,59 @@ export default function ReceiptsPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {receipts.map((receipt) => (
-                <article
-                  key={receipt.id}
-                  className="bg-white border border-washi-300 rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4"
-                  onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
-                >
-                  <div className="relative w-full h-52 rounded-2xl overflow-hidden bg-washi-200 border border-washi-300">
-                    {receipt.image_path ? (
-                      <Image
-                        src={receipt.image_path}
-                        alt={`レシート - ${receipt.store_name}`}
-                        fill
-                        className="object-cover object-top"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                        onError={(event) => {
-                          const target = event.currentTarget;
-                          if (target.src !== "/placeholder-receipt.png") {
-                            target.src = "/placeholder-receipt.png";
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-sumi-400">
-                        <FileText className="w-12 h-12" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold text-sumi-900 truncate">{receipt.store_name || "店舗名不明"}</p>
-                      <p className="text-sm text-sumi-500">{receipt.transaction_date || "日付不明"}</p>
+              {receipts.map((receipt) => {
+                const primaryCategory = resolvePrimaryCategory(receipt);
+                const categoryLabel = getCategoryLabel(primaryCategory);
+                const categoryClasses = getCategoryBadgeClasses(primaryCategory);
+
+                return (
+                  <article
+                    key={receipt.id}
+                    className="bg-white border border-washi-300 rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4"
+                    onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
+                  >
+                    <div className="relative w-full h-52 rounded-2xl overflow-hidden bg-washi-200 border border-washi-300">
+                      {receipt.image_path ? (
+                        <Image
+                          src={receipt.image_path}
+                          alt={`レシート - ${receipt.store_name}`}
+                          fill
+                          className="object-cover object-top"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                          onError={(event) => {
+                            const target = event.currentTarget;
+                            if (target.src !== "/placeholder-receipt.png") {
+                              target.src = "/placeholder-receipt.png";
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-sumi-400">
+                          <FileText className="w-12 h-12" />
+                        </div>
+                      )}
                     </div>
-                    <span className="text-lg font-bold text-teal-600">
-                      ¥{receipt.total_amount?.toLocaleString() || "0"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-sumi-500">
-                    <span className="px-2 py-1 rounded-full bg-washi-200">{receipt.uploader || "夫"}</span>
-                    <span className="px-2 py-1 rounded-full bg-washi-200">
-                      {receipt.items?.[0]?.category || "未分類"}
-                    </span>
-                  </div>
-                </article>
-              ))}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-semibold text-sumi-900 truncate">{receipt.store_name || "店舗名不明"}</p>
+                        <p className="text-sm text-sumi-500">{receipt.transaction_date || "日付不明"}</p>
+                      </div>
+                      <span className="text-lg font-bold text-teal-600">
+                        ¥{receipt.total_amount?.toLocaleString() || "0"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-sumi-500">
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-washi-200 text-sumi-600">
+                        {receipt.uploader || "夫"}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${categoryClasses}`}>
+                        <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
+                        {categoryLabel}
+                      </span>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -588,6 +567,14 @@ export default function ReceiptsPage() {
       </button>
     </div>
   );
+}
+
+function resolvePrimaryCategory(receipt: ReceiptData): string | undefined {
+  const firstWithCategory = receipt.items?.find((item) => item.category && item.category.trim().length > 0);
+  if (firstWithCategory?.category) {
+    return firstWithCategory.category;
+  }
+  return receipt.items?.[0]?.category ?? undefined;
 }
 
 function StatCard({
