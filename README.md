@@ -1,4 +1,17 @@
-# Receipt Recognition App with HARINA CLI
+<p align="center">
+  <img src="header.png" alt="HARINA Receipt Recognition Header" width="720">
+</p>
+
+<h1 align="center">🧾 Receipt Recognition App with HARINA CLI</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/Docker%20Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker Compose">
+  <img src="https://img.shields.io/badge/Tailwind%20CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS">
+</p>
 
 HARINAのCLIをバックエンドにしたDocker-composeベースのレシート認識アプリです。
 
@@ -11,7 +24,7 @@ HARINAのCLIをバックエンドにしたDocker-composeベースのレシート
 
 ## 🚀 クイックスタート
 
-### 1. 環境変数の設定
+### 🔑 1. 環境変数の設定
 
 ```bash
 cp .env.example .env
@@ -26,14 +39,14 @@ OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
-### 2. アプリケーションの起動
+### 🚀 2. アプリケーションの起動
 
 ```bash
 # Docker Composeでアプリケーション全体を起動
 docker-compose up --build
 ```
 
-### 3. アクセス
+### 🌐 3. アクセス
 
 - **フロントエンド**: http://localhost:3000
 - **バックエンドAPI**: http://localhost:8001
@@ -42,7 +55,7 @@ docker-compose up --build
 
 ## 📱 機能
 
-### フロントエンド (React + TypeScript)
+### 💻 フロントエンド (React + TypeScript)
 - ドラッグ&ドロップでレシート画像アップロード
 - リアルタイム処理進捗表示
 - AIモデル選択（Gemini、GPT-4o、Claude）
@@ -51,20 +64,20 @@ docker-compose up --build
 - リアルタイム統計情報表示
 - レスポンシブデザイン
 
-### バックエンド (HARINA CLI)
+### 🧠 バックエンド (HARINA CLI)
 - 複数AIモデル対応
 - XML/CSV形式出力
 - RESTful API
 - 高速画像処理
 
-### データベース (PostgreSQL)
+### 🗄️ データベース (PostgreSQL)
 - レシート情報永続化
 - 商品情報管理
 - 履歴機能
 
 ## 🛠️ 開発
 
-### 個別サービスの起動
+### 🔄 個別サービスの起動
 
 ```bash
 # バックエンドのみ
@@ -76,7 +89,7 @@ npm install
 npm start
 ```
 
-### ログの確認
+### 📋 ログの確認
 
 ```bash
 # 全サービスのログ
@@ -109,7 +122,7 @@ docker-compose logs -f postgres
 
 ## 🔧 カスタマイズ
 
-### AIモデルの追加
+### 🧩 AIモデルの追加
 
 `frontend/src/components/ReceiptUpload.tsx`でモデル選択肢を編集：
 
@@ -117,13 +130,13 @@ docker-compose logs -f postgres
 <option value="new-model">New Model</option>
 ```
 
-### UIのカスタマイズ
+### 🎨 UIのカスタマイズ
 
 Tailwind CSSを使用しているため、`frontend/src/`内のコンポーネントで簡単にスタイル変更可能。
 
 ## 🐛 トラブルシューティング
 
-### よくある問題
+### ❗ よくある問題
 
 1. **APIキーエラー**
    - `.env`ファイルでAPIキーが正しく設定されているか確認
@@ -136,7 +149,7 @@ Tailwind CSSを使用しているため、`frontend/src/`内のコンポーネ�
    - 対応形式: JPEG, PNG, GIF, BMP
    - ファイルサイズ制限を確認
 
-### ログ確認
+### 🧐 ログ確認
 
 ```bash
 # エラーログの確認
