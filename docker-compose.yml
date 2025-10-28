@@ -82,6 +82,25 @@ services:
       - receipt_network
     restart: unless-stopped
 
+  discord-bot:
+    build:
+      context: ./discord-bot
+      dockerfile: Dockerfile
+    container_name: receipt_discord_bot
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_ALLOWED_CHANNEL_IDS=${DISCORD_ALLOWED_CHANNEL_IDS:-}
+      - RECEIPT_API_URL=http://app:3000/api/process-receipt
+      - RECEIPT_MODEL=${DISCORD_RECEIPT_MODEL:-gemini}
+      - RECEIPT_UPLOADER=${DISCORD_RECEIPT_UPLOADER:-discord}
+      - DISCORD_MAX_FILE_MB=${DISCORD_MAX_FILE_MB:-15}
+    depends_on:
+      app:
+        condition: service_started
+    networks:
+      - receipt_network
+    restart: unless-stopped
+
   # db-ui アプリケーション（データベース管理UI）
   # db-ui:
   #   image: ghcr.io/n7olkachev/db-ui:1.1

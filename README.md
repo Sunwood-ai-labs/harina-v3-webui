@@ -7,6 +7,7 @@ HARINAのCLIをバックエンドにしたDocker-composeベースのレシート
 - **Backend**: HARINA v3 CLI (FastAPI) - レシート認識API
 - **Frontend**: React + TypeScript - ユーザーインターフェース  
 - **Database**: PostgreSQL - レシートデータ保存
+- **Discord Bot**: discord.py - Discordからの画像投稿を受け付け
 - **Container**: Docker Compose - 統合環境
 
 ## 🚀 クイックスタート
@@ -48,6 +49,21 @@ openssl req -x509 -nodes -newkey rsa:4096 \
 
 ブラウザで警告が表示される場合は、生成した証明書を信頼済みに追加してください。
 
+### 🤖 1.6 Discordボット用環境変数の設定（任意）
+
+Discordから画像をアップロードしたい場合は、`.env` にボットのトークン等を設定します。
+
+```env
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_ALLOWED_CHANNEL_IDS=123456789012345678  # カンマ区切りで複数指定可
+DISCORD_RECEIPT_MODEL=gemini
+DISCORD_RECEIPT_UPLOADER=discord
+```
+
+> **注意:** DiscordのBot設定で「MESSAGE CONTENT INTENT」を有効にし、添付ファイルを扱うチャンネルIDを指定すると誤反応を防げます。
+
+複数画像を同時に投稿した場合は、それぞれ個別の進捗メッセージが同じスレッドに投稿され、解析結果が順次表示されます。処理完了後はスレッドが自動でアーカイブされます。
+
 ### 2. アプリケーションの起動
 
 ```bash
@@ -85,6 +101,11 @@ docker-compose up --build
 - 商品情報管理
 - 履歴機能
 
+### Discordボット
+- 画像添付を検知してレシート解析をトリガー（1メッセージ内の複数画像にも対応）
+- 解析結果（店舗名・合計金額・アイテム）をチャンネルへ返信
+- チャンネルIDで対象範囲を制御可能
+
 ## 🛠️ 開発
 
 ### 個別サービスの起動
@@ -110,6 +131,20 @@ docker-compose logs -f backend
 docker-compose logs -f frontend
 docker-compose logs -f postgres
 ```
+
+### Discordボットの開発メモ
+
+```bash
+# Discordボットのみローカルで起動
+cd discord-bot
+python -m venv .venv
+source .venv/bin/activate  # Windows は .venv\\Scripts\\activate
+pip install -r requirements.txt
+export DISCORD_BOT_TOKEN=your-token
+python bot.py
+```
+
+> Docker Compose でサービスを起動すると `discord-bot` コンテナが自動で立ち上がります。
 
 ## 📁 プロジェクト構造
 

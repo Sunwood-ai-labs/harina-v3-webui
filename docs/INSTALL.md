@@ -27,6 +27,10 @@ cp .env.example .env
 GEMINI_API_KEY=your_gemini_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
+
+# Discordボットを使う場合
+DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_ALLOWED_CHANNEL_IDS=
 ```
 
 ### 3. アプリケーションの起動
