@@ -1,0 +1,16 @@
+{
+  "generation_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "prompt": "A clean, photorealistic miniature scene inside a wide rectangular glass cuboid (elongated horizontal cube, width > height > depth) floating on a pure white, seamless background. 
+A cute hedgehog sits at a tiny wooden desk, keeping a kakeibo (household ledger). 
+The hedgehog holds a pencil in its paw. On the desk, an open notebook with neat columns (Income / Expenses / Savings), a small calculator, tidy receipt slips, and a coin tray are precisely arranged.
+"HARINA v3 Web UI v0\.1\.0" appears debossed on the ledger cover, printed on a small desk placard, and as a minimal back-wall poster inside the cuboid (modern sans-serif, high contrast, perfectly legible). 
+No external props or scenery beyond the cuboid. Soft, balanced lighting; handcrafted look with subtle internal shadows; realistic quill texture, paper fibers, and natural wood grain; clean glass reflections with minimal glare. 
+The horizontal cuboid spans most of the frame with comfortable top/bottom negative space. Centered composition, shallow depth of field, ultra-detailed.",
+  "model": "imagen-4-ultra",
+  "num_images": 1,
+  "aspect_ratio": "16:9",
+  "seed": "",
+  "workflow_run": "1",
+  "commit_sha": "6a74f444523e8ab89894fc41d05bad899ae3ca2c",
+  "tag": "v0.1.0"
+}
