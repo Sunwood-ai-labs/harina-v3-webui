@@ -13,6 +13,7 @@ from .utils import (
     format_xml,
     convert_xml_to_csv
 )
+from .category_sync import get_categories_xml
 
 
 class HarinaCore:
@@ -39,6 +40,13 @@ class HarinaCore:
             raise ValueError(f"Failed to load XML template: {exc}") from exc
 
     def _load_product_categories(self) -> str:
+        try:
+            categories_xml = get_categories_xml()
+            if categories_xml:
+                return categories_xml
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning("Falling back to static category XML due to error: {}", exc)
+
         if self.categories_path:
             categories_path = Path(self.categories_path)
         else:
