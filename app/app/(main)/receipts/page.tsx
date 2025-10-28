@@ -16,6 +16,7 @@ import {
   CheckSquare,
   Square,
   X,
+  SlidersHorizontal,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -24,6 +25,7 @@ import CameraCapture from "../../components/CameraCapture";
 import UploaderSelector from "../../components/UploaderSelector";
 import { ReceiptData } from "../../types";
 import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryStyles";
+import { ALL_CATEGORIES, getSubcategoriesForCategory } from "../../utils/categoryCatalog";
 
 type ExportFormat = "csv" | "json" | "zip";
 
@@ -71,16 +73,56 @@ export default function ReceiptsPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const allSelectableIds = useMemo(
-    () =>
-      receipts
-        .map((receipt) => receipt.id)
-        .filter((id): id is number => typeof id === "number"),
-    [receipts]
-  );
-  const isAllSelected = allSelectableIds.length > 0 && selectedIds.length === allSelectableIds.length;
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const hasSelection = selectedIds.length > 0;
+  const [filters, setFilters] = useState({
+    searchTerm: "",
+    category: "",
+    subcategory: "",
+    store: "",
+    uploader: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+  const categoryOptions = useMemo(() => {
+    const merged = new Set<string>(ALL_CATEGORIES);
+    receipts.forEach((receipt) =>
+      receipt.items?.forEach((item) => {
+        if (item.category) {
+          merged.add(item.category);
+        }
+      })
+    );
+    return Array.from(merged).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [receipts]);
+  const storeOptions = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.store_name) {
+        set.add(receipt.store_name);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [receipts]);
+  const uploaderOptions = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.uploader) {
+        set.add(receipt.uploader);
+      }
+    });
+    return Array.from(set).sort();
+  }, [receipts]);
+  const subcategoryOptions = useMemo(() => {
+    if (!filters.category) return [];
+    const base = new Set<string>(getSubcategoriesForCategory(filters.category));
+    receipts.forEach((receipt) => {
+      receipt.items?.forEach((item) => {
+        if (item.category === filters.category && item.subcategory) {
+          base.add(item.subcategory);
+        }
+      });
+    });
+    return Array.from(base).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [filters.category, receipts]);
 
   useEffect(() => {
     fetchReceipts();
@@ -98,6 +140,109 @@ export default function ReceiptsPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
+
+  const filteredReceipts = useMemo(() => {
+    return receipts.filter((receipt) => {
+      const searchTerm = filters.searchTerm.trim().toLowerCase();
+
+      if (searchTerm) {
+        const storeHit = receipt.store_name?.toLowerCase().includes(searchTerm);
+        const receiptNumberHit = receipt.receipt_number?.toLowerCase().includes(searchTerm);
+        const itemHit = receipt.items?.some((item) =>
+          item.name?.toLowerCase().includes(searchTerm)
+        );
+
+        if (!storeHit && !receiptNumberHit && !itemHit) {
+          return false;
+        }
+      }
+
+      if (filters.store && receipt.store_name !== filters.store) {
+        return false;
+      }
+
+      if (filters.uploader && receipt.uploader !== filters.uploader) {
+        return false;
+      }
+
+      if (filters.dateFrom) {
+        if (!receipt.transaction_date || receipt.transaction_date < filters.dateFrom) {
+          return false;
+        }
+      }
+
+      if (filters.dateTo) {
+        if (!receipt.transaction_date || receipt.transaction_date > filters.dateTo) {
+          return false;
+        }
+      }
+
+      const categories = new Set(
+        receipt.items?.map((item) => item.category?.trim()).filter(Boolean) as string[] ?? []
+      );
+
+      if (filters.category && !categories.has(filters.category)) {
+        return false;
+      }
+
+      if (filters.subcategory) {
+        const hasSubcategory = receipt.items?.some(
+          (item) =>
+            item.category?.trim() === filters.category &&
+            item.subcategory?.trim() === filters.subcategory
+        );
+        if (!hasSubcategory) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [filters, receipts]);
+
+  const filteredStats = useMemo(() => {
+    const totalReceipts = filteredReceipts.length;
+    const totalAmount = filteredReceipts.reduce(
+      (acc, receipt) => acc + (receipt.total_amount ?? 0),
+      0
+    );
+    const totalItems = filteredReceipts.reduce((acc, receipt) => {
+      const itemsCount =
+        receipt.items?.reduce((itemAcc, item) => itemAcc + (item.quantity ?? 0), 0) ?? 0;
+      return acc + itemsCount;
+    }, 0);
+
+    return {
+      totalReceipts,
+      totalAmount,
+      totalItems,
+      avgAmount: totalReceipts > 0 ? Math.round(totalAmount / totalReceipts) : 0,
+    };
+  }, [filteredReceipts]);
+
+  const allSelectableIds = useMemo(
+    () =>
+      filteredReceipts
+        .map((receipt) => receipt.id)
+        .filter((id): id is number => typeof id === "number"),
+    [filteredReceipts]
+  );
+  const isAllSelected = allSelectableIds.length > 0 && selectedIds.length === allSelectableIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const hasSelection = selectedIds.length > 0;
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => allSelectableIds.includes(id)));
+  }, [allSelectableIds]);
+
+  const [showFilters, setShowFilters] = useState(false);
+  const hasActiveFilters =
+    filters.category ||
+    filters.subcategory ||
+    filters.store ||
+    filters.uploader ||
+    filters.dateFrom ||
+    filters.dateTo;
 
   const fetchReceipts = async () => {
     try {
@@ -324,6 +469,34 @@ export default function ReceiptsPage() {
     }
   };
 
+  const handleFilterChange = (key: keyof typeof filters, value: string) => {
+    setFilters((prev) => {
+      if (key === "category") {
+        return {
+          ...prev,
+          category: value,
+          subcategory: "",
+        };
+      }
+      return {
+        ...prev,
+        [key]: value,
+      };
+    });
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      searchTerm: "",
+      category: "",
+      subcategory: "",
+      store: "",
+      uploader: "",
+      dateFrom: "",
+      dateTo: "",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-washi-100">
       <header className="sticky top-0 z-30 border-b border-washi-300 bg-white/90 backdrop-blur">
@@ -341,12 +514,26 @@ export default function ReceiptsPage() {
               <input
                 className="flex-1 bg-transparent border-none text-sm text-sumi-700 focus:outline-none"
                 placeholder="店舗名・金額・メモで検索..."
+                value={filters.searchTerm}
+                onChange={(event) => handleFilterChange("searchTerm", event.target.value)}
               />
               <div className="hidden sm:flex gap-2 text-xs text-sumi-500">
-                <span className="px-2 py-1 rounded-full bg-washi-200">2025年</span>
-                <span className="px-2 py-1 rounded-full bg-washi-200">先月</span>
-                <span className="px-2 py-1 rounded-full bg-washi-200 lg:inline-flex hidden">未整理</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200">カテゴリ</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200">店舗</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200 lg:inline-flex hidden">期間</span>
               </div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-washi-300 bg-white px-3 py-1.5 text-xs font-semibold text-sumi-600 hover:bg-washi-100"
+                onClick={() => setShowFilters((prev) => !prev)}
+                aria-pressed={showFilters}
+              >
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">詳細</span>
+                {hasActiveFilters ? (
+                  <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-teal-500" aria-hidden="true" />
+                ) : null}
+              </button>
             </div>
           </div>
 
@@ -402,16 +589,130 @@ export default function ReceiptsPage() {
             </button>
           </div>
         </div>
+        {(showFilters || hasActiveFilters) && (
+          <div className="px-4 sm:px-6 lg:px-8 pb-3">
+            <div className="rounded-2xl border border-washi-300 bg-white px-4 py-4 shadow-sm">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-category" className="text-xs font-semibold text-sumi-500">
+                    カテゴリ
+                  </label>
+                  <select
+                    id="filter-category"
+                    value={filters.category}
+                    onChange={(event) => handleFilterChange("category", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-subcategory" className="text-xs font-semibold text-sumi-500">
+                    サブカテゴリ
+                  </label>
+                  <select
+                    id="filter-subcategory"
+                    value={filters.subcategory}
+                    onChange={(event) => handleFilterChange("subcategory", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                    disabled={!filters.category}
+                  >
+                    <option value="">すべて</option>
+                    {subcategoryOptions.map((subcategory) => (
+                      <option key={subcategory} value={subcategory}>
+                        {subcategory}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-store" className="text-xs font-semibold text-sumi-500">
+                    店舗
+                  </label>
+                  <select
+                    id="filter-store"
+                    value={filters.store}
+                    onChange={(event) => handleFilterChange("store", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {storeOptions.map((store) => (
+                      <option key={store} value={store}>
+                        {store}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-uploader" className="text-xs font-semibold text-sumi-500">
+                    アップロード者
+                  </label>
+                  <select
+                    id="filter-uploader"
+                    value={filters.uploader}
+                    onChange={(event) => handleFilterChange("uploader", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {uploaderOptions.map((uploader) => (
+                      <option key={uploader} value={uploader}>
+                        {uploader}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-date-from" className="text-xs font-semibold text-sumi-500">
+                    日付（開始）
+                  </label>
+                  <input
+                    id="filter-date-from"
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(event) => handleFilterChange("dateFrom", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-date-to" className="text-xs font-semibold text-sumi-500">
+                    日付（終了）
+                  </label>
+                  <input
+                    id="filter-date-to"
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(event) => handleFilterChange("dateTo", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-2 rounded-xl border border-washi-300 bg-white px-4 py-2 text-sm font-semibold text-sumi-600 hover:bg-washi-100"
+                >
+                  フィルターをリセット
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard title="総レシート数" value={`${stats.totalReceipts.toLocaleString()} 件`} tone="indigo" />
-          <StatCard title="総支出額" value={`¥${stats.totalAmount.toLocaleString()}`} tone="teal" />
-          <StatCard title="平均レシート額" value={`¥${stats.avgAmount.toLocaleString()}`} tone="matcha" />
+          <StatCard title="総レシート数" value={`${filteredStats.totalReceipts.toLocaleString()} 件`} tone="indigo" />
+          <StatCard title="総支出額" value={`¥${filteredStats.totalAmount.toLocaleString()}`} tone="teal" />
+          <StatCard title="平均レシート額" value={`¥${filteredStats.avgAmount.toLocaleString()}`} tone="matcha" />
           <StatCard
             title="商品登録数"
-            value={`${stats.totalItems.toLocaleString()} 点`}
+            value={`${filteredStats.totalItems.toLocaleString()} 点`}
             tone="sakura"
           />
         </section>
@@ -487,14 +788,14 @@ export default function ReceiptsPage() {
                       データを読み込み中...
                     </td>
                   </tr>
-                ) : receipts.length === 0 ? (
+                ) : filteredReceipts.length === 0 ? (
                   <tr>
                     <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
-                      レシートがありません。右下のボタンからレシートを追加してください。
+                      条件に一致するレシートがありません。フィルターを調整してください。
                     </td>
                   </tr>
                 ) : (
-                  receipts.slice(0, 6).map((receipt) => {
+                  filteredReceipts.slice(0, 6).map((receipt) => {
                     const primaryCategory = resolvePrimaryCategory(receipt);
                     const categoryLabel = getCategoryLabel(primaryCategory);
                     const categoryClasses = getCategoryBadgeClasses(primaryCategory);
@@ -576,13 +877,13 @@ export default function ReceiptsPage() {
 
           {isLoading ? (
             <div className="text-center py-20 text-sumi-500">データを読み込み中...</div>
-          ) : receipts.length === 0 ? (
+          ) : filteredReceipts.length === 0 ? (
             <div className="text-center py-20 text-sumi-500">
-              レシートがありません。右下のアクションから追加してください。
+              条件に一致するレシートがありません。フィルターを変更して再検索してください。
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {receipts.map((receipt) => {
+              {filteredReceipts.map((receipt) => {
                 const primaryCategory = resolvePrimaryCategory(receipt);
                 const categoryLabel = getCategoryLabel(primaryCategory);
                 const categoryClasses = getCategoryBadgeClasses(primaryCategory);
