@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Camera, X, RotateCcw, Check, Loader2 } from 'lucide-react'
-import Image from 'next/image'
 
 interface CameraCaptureProps {
   onCapture: (file: File) => void
@@ -17,15 +16,69 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const waitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const readyCheckRef = useRef<number | null>(null)
+
+  const clearWaitTimeout = useCallback(() => {
+    if (waitTimeoutRef.current) {
+      clearTimeout(waitTimeoutRef.current)
+      waitTimeoutRef.current = null
+    }
+  }, [])
+
+  const stopReadyCheck = useCallback(() => {
+    if (readyCheckRef.current !== null) {
+      cancelAnimationFrame(readyCheckRef.current)
+      readyCheckRef.current = null
+    }
+  }, [])
+
+  const markVideoReady = useCallback(() => {
+    if (!videoRef.current) return false
+
+    const videoElement = videoRef.current
+    const width = videoElement.videoWidth
+    const height = videoElement.videoHeight
+
+    if (width > 0 && height > 0) {
+      clearWaitTimeout()
+      stopReadyCheck()
+      setIsStreaming(true)
+      setIsInitializing(false)
+      setErrorMessage(null)
+      if (videoElement.paused && typeof videoElement.play === 'function') {
+        videoElement.play().catch(err => {
+          console.warn('ビデオの再生に失敗しました。ユーザー操作を待ちます。', err)
+        })
+      }
+      return true
+    }
+
+    return false
+  }, [clearWaitTimeout, stopReadyCheck])
+
+  const scheduleReadyCheck = useCallback(() => {
+    stopReadyCheck()
+    readyCheckRef.current = requestAnimationFrame(() => {
+      if (!markVideoReady()) {
+        scheduleReadyCheck()
+      }
+    })
+  }, [markVideoReady, stopReadyCheck])
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+    clearWaitTimeout()
+    stopReadyCheck()
     setIsStreaming(false)
     setIsInitializing(false)
-  }, [])
+  }, [clearWaitTimeout, stopReadyCheck])
 
   const startCamera = useCallback(async () => {
     if (typeof window === 'undefined' || !navigator?.mediaDevices?.getUserMedia) {
@@ -70,10 +123,29 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
       }
 
       if (videoRef.current && stream) {
-        videoRef.current.srcObject = stream
+        const videoElement = videoRef.current
+        videoElement.srcObject = stream
+        videoElement.autoplay = true
+        videoElement.muted = true
+        videoElement.playsInline = true
+        videoElement.setAttribute('autoplay', 'true')
+        videoElement.setAttribute('muted', 'true')
+        videoElement.setAttribute('playsinline', 'true')
+
+        clearWaitTimeout()
+        waitTimeoutRef.current = setTimeout(() => {
+          if (!videoElement.videoWidth || !videoElement.videoHeight) {
+            setErrorMessage('カメラの映像を取得できませんでした。ブラウザの再読み込み後も問題が続く場合は、カメラ権限やHTTPS接続を確認してください。')
+            stopReadyCheck()
+          }
+          setIsInitializing(false)
+        }, 3000)
+
+        if (!markVideoReady()) {
+          scheduleReadyCheck()
+        }
       }
       streamRef.current = stream
-      setIsStreaming(true)
     } catch (error) {
       console.error('カメラアクセスエラー:', error)
       const message =
@@ -85,12 +157,17 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
     } finally {
       setIsInitializing(false)
     }
-  }, [])
+  }, [clearWaitTimeout, markVideoReady, scheduleReadyCheck, stopReadyCheck])
 
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return
 
     const video = videoRef.current
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      setErrorMessage('カメラがまだ初期化中です。映像が表示されるまでお待ちください。')
+      return
+    }
+
     const canvas = canvasRef.current
     const context = canvas.getContext('2d')
 
@@ -136,8 +213,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
     void startCamera()
     return () => {
       stopCamera()
+      clearWaitTimeout()
+      stopReadyCheck()
     }
-  }, [startCamera, stopCamera])
+  }, [startCamera, stopCamera, clearWaitTimeout, stopReadyCheck])
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center">
@@ -185,6 +264,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
                 ref={videoRef}
                 autoPlay
                 playsInline
+                muted
+                onLoadedMetadata={markVideoReady}
+                onLoadedData={markVideoReady}
+                onCanPlay={markVideoReady}
                 className="w-full h-full object-contain rounded-lg"
               />
               
@@ -201,13 +284,10 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
 
           {capturedImage && (
             <div className="relative w-full h-full">
-              <Image
+              <img
                 src={capturedImage}
                 alt="撮影されたレシート"
-                fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1280px) 80vw, 960px"
-                className="object-contain rounded-lg"
-                priority
+                className="w-full h-full object-contain rounded-lg"
                 onError={() => setErrorMessage('画像を読み込めませんでした。もう一度撮影してください。')}
               />
             </div>
