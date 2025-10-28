@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -12,6 +12,10 @@ import {
   Upload,
   Camera,
   Plus,
+  Trash2,
+  CheckSquare,
+  Square,
+  X,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -64,6 +68,19 @@ export default function ReceiptsPage() {
   const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const allSelectableIds = useMemo(
+    () =>
+      receipts
+        .map((receipt) => receipt.id)
+        .filter((id): id is number => typeof id === "number"),
+    [receipts]
+  );
+  const isAllSelected = allSelectableIds.length > 0 && selectedIds.length === allSelectableIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const hasSelection = selectedIds.length > 0;
 
   useEffect(() => {
     fetchReceipts();
@@ -102,6 +119,7 @@ export default function ReceiptsPage() {
           userStats: data.stats.userStats || [],
         });
       }
+      setSelectedIds([]);
     } catch (error) {
       console.error(error);
       toast.error("レシートデータの取得に失敗しました");
@@ -115,6 +133,76 @@ export default function ReceiptsPage() {
       router.push(`/receipts/${receipt.id}`);
     }
     fetchReceipts();
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedIds([]);
+      }
+      return next;
+    });
+  };
+
+  const handleSelect = (id: number, checked: boolean) => {
+    if (!Number.isFinite(id)) return;
+    setSelectedIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) {
+          return prev;
+        }
+        return [...prev, id];
+      }
+      return prev.filter((existingId) => existingId !== id);
+    });
+  };
+
+  const handleToggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((existingId) => existingId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(allSelectableIds);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    try {
+      setIsDeleting(true);
+      const response = await fetch("/api/receipts", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json().catch(() => ({ error: "削除に失敗しました" }));
+        throw new Error(error || "削除に失敗しました");
+      }
+
+      const result = await response.json().catch(() => null);
+      toast.success(
+        result?.deletedReceipts
+          ? `${result.deletedReceipts}件のレシートを削除しました`
+          : "レシートを削除しました"
+      );
+      await fetchReceipts();
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "レシートの削除に失敗しました");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleFileUpload = async (files: File | File[]) => {
@@ -296,6 +384,16 @@ export default function ReceiptsPage() {
             </div>
 
             <button
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-washi-300 ${
+                selectionMode ? "bg-sumi-900 text-white border-sumi-900" : "bg-white text-sumi-700 hover:bg-washi-100"
+              }`}
+              onClick={toggleSelectionMode}
+            >
+              {selectionMode ? <X size={16} /> : <CheckSquare size={16} />}
+              {selectionMode ? "選択モード終了" : "一括選択"}
+            </button>
+
+            <button
               className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 text-white shadow-sm hover:bg-teal-600"
               onClick={() => setShowFabPop((prev) => !prev)}
             >
@@ -318,6 +416,45 @@ export default function ReceiptsPage() {
           />
         </section>
 
+        {selectionMode && (
+          <section className="bg-white border border-washi-300 rounded-3xl shadow-sm px-5 py-4 flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex items-center gap-3 text-sm text-sumi-600">
+              <CheckSquare size={16} className="text-teal-600" />
+              <span>
+                {hasSelection
+                  ? `${selectedIds.length}件のレシートを選択中`
+                  : "削除したいレシートを選択してください"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-washi-300 text-sumi-600 hover:bg-washi-100 text-xs sm:text-sm"
+                onClick={handleSelectAll}
+              >
+                {isAllSelected ? (
+                  <>
+                    <X size={14} />
+                    全選択解除
+                  </>
+                ) : (
+                  <>
+                    <Square size={14} />
+                    全選択
+                  </>
+                )}
+              </button>
+              <button
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
+                onClick={handleBulkDelete}
+                disabled={!hasSelection || isDeleting}
+              >
+                <Trash2 size={16} />
+                {isDeleting ? "削除中..." : "選択したレシートを削除"}
+              </button>
+            </div>
+          </section>
+        )}
+
         <section className="panel bg-white border border-washi-300 rounded-3xl shadow-sm">
           <div className="px-6 py-4 border-b border-washi-200 flex items-center justify-between">
             <h2 className="text-lg font-bold text-sumi-900">最近のレシート</h2>
@@ -334,6 +471,7 @@ export default function ReceiptsPage() {
             <table className="w-full border-separate border-spacing-y-2 p-3">
               <thead>
                 <tr className="text-xs text-sumi-500 text-left">
+                  {selectionMode && <th className="px-3 w-12">選択</th>}
                   <th className="px-3">日付</th>
                   <th className="px-3">店舗</th>
                   <th className="px-3">アップロード者</th>
@@ -345,13 +483,13 @@ export default function ReceiptsPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-sumi-500">
+                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
                       データを読み込み中...
                     </td>
                   </tr>
                 ) : receipts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-10 text-center text-sumi-500">
+                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
                       レシートがありません。右下のボタンからレシートを追加してください。
                     </td>
                   </tr>
@@ -360,13 +498,39 @@ export default function ReceiptsPage() {
                     const primaryCategory = resolvePrimaryCategory(receipt);
                     const categoryLabel = getCategoryLabel(primaryCategory);
                     const categoryClasses = getCategoryBadgeClasses(primaryCategory);
+                    const id = receipt.id ?? 0;
+                    const isChecked = id ? selectedIdSet.has(id) : false;
+
+                    const handleRowClick = () => {
+                      if (!id) return;
+                      if (selectionMode) {
+                        handleToggleSelect(id);
+                      } else {
+                        router.push(`/receipts/${id}`);
+                      }
+                    };
 
                     return (
                       <tr
                         key={receipt.id}
                         className="hover:bg-washi-100 cursor-pointer"
-                        onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
+                        onClick={handleRowClick}
                       >
+                        {selectionMode && (
+                          <td className="px-3 py-3 text-sm">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-washi-400 text-teal-600 focus:ring-teal-500"
+                              checked={isChecked}
+                              onChange={(event) => {
+                                event.stopPropagation();
+                                handleSelect(id, event.target.checked);
+                              }}
+                              onClick={(event) => event.stopPropagation()}
+                              disabled={!id}
+                            />
+                          </td>
+                        )}
                         <td className="px-3 py-3 text-sm text-sumi-700">{receipt.transaction_date || "日付不明"}</td>
                         <td className="px-3 py-3 text-sm text-sumi-700">{receipt.store_name || "店舗名不明"}</td>
                         <td className="px-3 py-3 text-sm text-sumi-700">
@@ -422,14 +586,42 @@ export default function ReceiptsPage() {
                 const primaryCategory = resolvePrimaryCategory(receipt);
                 const categoryLabel = getCategoryLabel(primaryCategory);
                 const categoryClasses = getCategoryBadgeClasses(primaryCategory);
+                const id = receipt.id ?? 0;
+                const isChecked = id ? selectedIdSet.has(id) : false;
+
+                const handleCardClick = () => {
+                  if (!id) return;
+                  if (selectionMode) {
+                    handleToggleSelect(id);
+                  } else {
+                    router.push(`/receipts/${id}`);
+                  }
+                };
 
                 return (
                   <article
                     key={receipt.id}
-                    className="bg-white border border-washi-300 rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4"
-                    onClick={() => receipt.id && router.push(`/receipts/${receipt.id}`)}
+                    className={`bg-white border rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4 ${
+                      isChecked ? "border-teal-300 ring-2 ring-teal-200" : "border-washi-300"
+                    }`}
+                    onClick={handleCardClick}
                   >
                     <div className="relative w-full h-52 rounded-2xl overflow-hidden bg-washi-200 border border-washi-300">
+                      {selectionMode && (
+                        <div className="absolute top-3 right-3 z-10">
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 rounded border-washi-400 text-teal-600 focus:ring-teal-500 bg-white"
+                            checked={isChecked}
+                            onChange={(event) => {
+                              event.stopPropagation();
+                              handleSelect(id, event.target.checked);
+                            }}
+                            onClick={(event) => event.stopPropagation()}
+                            disabled={!id}
+                          />
+                        </div>
+                      )}
                       {receipt.image_path ? (
                         <Image
                           src={receipt.image_path}

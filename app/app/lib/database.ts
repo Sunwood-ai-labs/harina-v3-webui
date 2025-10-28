@@ -301,6 +301,46 @@ export async function getReceiptById(id: number): Promise<ReceiptData | null> {
   }
 }
 
+export async function deleteReceiptsByIds(ids: number[]): Promise<{ deletedReceipts: number; deletedItems: number; }> {
+  if (ids.length === 0) {
+    return { deletedReceipts: 0, deletedItems: 0 };
+  }
+
+  if (isBuildTime) {
+    throw new Error("Deletion is not available during build time");
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    await client.query("BEGIN");
+
+    const itemsResult = await client.query(
+      `DELETE FROM receipt_items WHERE receipt_id = ANY($1::int[])
+       RETURNING id`,
+      [ids]
+    );
+
+    const receiptsResult = await client.query(
+      `DELETE FROM receipts WHERE id = ANY($1::int[])
+       RETURNING id`,
+      [ids]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      deletedReceipts: receiptsResult.rowCount ?? 0,
+      deletedItems: itemsResult.rowCount ?? 0,
+    };
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
 export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
   if (isBuildTime) {
