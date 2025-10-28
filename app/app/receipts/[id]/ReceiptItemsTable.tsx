@@ -5,6 +5,7 @@ import { toast } from 'react-toastify'
 import { Loader2, RotateCcw, Save } from 'lucide-react'
 import { ReceiptItem } from '../../types'
 import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
+import { ALL_CATEGORIES, CATEGORY_CATALOG, getSubcategoriesForCategory } from '../../utils/categoryCatalog'
 
 interface ReceiptItemsTableProps {
   items: ReceiptItem[]
@@ -15,21 +16,6 @@ type ItemRowState = ReceiptItem & {
   draftSubcategory: string
   isSaving: boolean
 }
-
-const DEFAULT_CATEGORIES = [
-  '食品・飲料',
-  '日用品・雑貨',
-  '光熱費',
-  '住居',
-  '交通',
-  '通信',
-  '医療',
-  '教育',
-  '外食',
-  'エンタメ',
-  '公共料金',
-  'その他',
-]
 
 export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
   const [rows, setRows] = useState<ItemRowState[]>(() =>
@@ -42,7 +28,7 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
   )
 
   const suggestedCategories = useMemo(() => {
-    const set = new Set<string>(DEFAULT_CATEGORIES)
+    const set = new Set<string>(ALL_CATEGORIES)
     items.forEach(item => {
       if (item.category) {
         set.add(item.category)
@@ -51,30 +37,36 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ja'))
   }, [items])
 
-  const handleInputChange = (id: number | undefined, field: 'draftCategory' | 'draftSubcategory', value: string) => {
+  const updateRow = (id: number | undefined, updater: (row: ItemRowState) => ItemRowState) => {
     if (!id) return
-    setRows(prev =>
-      prev.map(row =>
-        row.id === id
-          ? { ...row, [field]: value }
-          : row
-      )
-    )
+    setRows(prev => prev.map(row => (row.id === id ? updater(row) : row)))
+  }
+
+  const handleCategoryChange = (id: number | undefined, category: string) => {
+    updateRow(id, row => {
+      const availableSubcategories = getSubcategoriesForCategory(category)
+      const nextSubcategory = availableSubcategories.includes(row.draftSubcategory) ? row.draftSubcategory : ''
+      return {
+        ...row,
+        draftCategory: category,
+        draftSubcategory: nextSubcategory,
+      }
+    })
+  }
+
+  const handleSubcategoryChange = (id: number | undefined, subcategory: string) => {
+    updateRow(id, row => ({
+      ...row,
+      draftSubcategory: subcategory,
+    }))
   }
 
   const handleReset = (id: number | undefined) => {
-    if (!id) return
-    setRows(prev =>
-      prev.map(row =>
-        row.id === id
-          ? {
-              ...row,
-              draftCategory: row.category ?? '',
-              draftSubcategory: row.subcategory ?? '',
-            }
-          : row
-      )
-    )
+    updateRow(id, row => ({
+      ...row,
+      draftCategory: row.category ?? '',
+      draftSubcategory: row.subcategory ?? '',
+    }))
   }
 
   const handleSave = async (id: number | undefined) => {
@@ -185,9 +177,7 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
                   <div className="flex flex-col gap-2">
                     <select
                       value={row.draftCategory}
-                      onChange={event =>
-                        handleInputChange(row.id, 'draftCategory', event.target.value)
-                      }
+                      onChange={event => handleCategoryChange(row.id, event.target.value)}
                       className="w-full rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
                     >
                       <option value="">カテゴリを選択</option>
@@ -204,14 +194,28 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  <input
+                  <select
                     value={row.draftSubcategory}
-                    onChange={event =>
-                      handleInputChange(row.id, 'draftSubcategory', event.target.value)
-                    }
-                    placeholder="サブカテゴリを入力"
-                    className="w-full rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  />
+                    onChange={event => handleSubcategoryChange(row.id, event.target.value)}
+                    className="w-full rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                    disabled={!row.draftCategory}
+                  >
+                    <option value="">
+                      {row.draftCategory ? 'サブカテゴリを選択' : 'カテゴリを選択してください'}
+                    </option>
+                    {(() => {
+                      const options = getSubcategoriesForCategory(row.draftCategory)
+                      const uniqueOptions = new Set(options)
+                      if (row.draftSubcategory && !uniqueOptions.has(row.draftSubcategory)) {
+                        uniqueOptions.add(row.draftSubcategory)
+                      }
+                      return Array.from(uniqueOptions)
+                    })().map(option => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td className="px-4 py-3 text-sm text-sumi-900 text-right">{row.quantity ?? 1}</td>
                 <td className="px-4 py-3 text-sm text-sumi-900 text-right">
