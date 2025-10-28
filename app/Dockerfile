@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-bookworm-slim
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY package*.json ./
 COPY . .
 
 # 依存関係をインストール
-RUN npm install
+RUN npm ci
 
 # Next.jsをビルド
 RUN npm run build

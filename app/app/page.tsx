@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { RefObject } from "react";
 import { Search, MoreHorizontal, FileText } from "lucide-react";
 import ReceiptUpload from "./components/ReceiptUpload";
 import CameraCapture from "./components/CameraCapture";
@@ -23,6 +24,20 @@ const DynamicDashboardCharts = dynamic(() => import('./components/DashboardChart
     </section>
   ),
 });
+
+type ExportFormat = "csv" | "json" | "zip";
+
+const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; description: string }> = [
+  { value: "csv", label: "CSV (再インポート用)", description: "インポート機能と完全互換の形式" },
+  { value: "json", label: "JSON (構造化データ)", description: "レシートとアイテム情報をそのまま保存" },
+  { value: "zip", label: "ZIP (CSV + JSON セット)", description: "CSVとJSONをまとめたバックアップ" },
+];
+
+const EXPORT_LABEL_MAP: Record<ExportFormat, string> = {
+  csv: "CSV",
+  json: "JSON",
+  zip: "ZIP",
+};
 
 // サイドバーコンポーネント
 const Sidebar = ({
@@ -83,9 +98,21 @@ const Sidebar = ({
 const Header = ({
   showExportBtn = true,
   showNewBtn = true,
+  onExportToggle,
+  showExportMenu = false,
+  onSelectFormat,
+  isExporting = false,
+  exportingFormat = null,
+  exportMenuRef,
 }: {
   showExportBtn?: boolean;
   showNewBtn?: boolean;
+  onExportToggle?: () => void;
+  showExportMenu?: boolean;
+  onSelectFormat?: (format: ExportFormat) => void;
+  isExporting?: boolean;
+  exportingFormat?: ExportFormat | null;
+  exportMenuRef?: RefObject<HTMLDivElement>;
 }) => (
   <header className="sticky top-0 bg-gray-50 border-b border-gray-200 p-3 z-10 flex items-center gap-3 justify-between">
     <div className="search flex items-center gap-2 flex-1 bg-white p-2 rounded-lg border border-gray-200">
@@ -99,11 +126,43 @@ const Header = ({
       <div className="chip bg-gray-100 px-2 py-1 rounded text-xs">未整理</div>
     </div>
 
-    <div className="toolbar flex gap-2">
+    <div className="toolbar flex gap-2 relative">
       {showExportBtn && (
-        <button className="btn secondary bg-white text-gray-800 px-3 py-2 rounded-lg border border-gray-200 font-semibold">
-          エクスポート
-        </button>
+        <div className="relative" ref={exportMenuRef ?? null}>
+          <button
+            className="btn secondary bg-white text-gray-800 px-3 py-2 rounded-lg border border-gray-200 font-semibold flex items-center gap-2"
+            onClick={onExportToggle}
+            aria-haspopup="menu"
+            aria-expanded={showExportMenu}
+          >
+            {isExporting ? "エクスポート中…" : "エクスポート"}
+            {isExporting && (
+              <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse" aria-hidden />
+            )}
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-2">
+              <p className="text-xs text-gray-500 px-2 pb-2">形式を選択してください</p>
+              <div className="grid gap-2">
+                {EXPORT_FORMATS.map((format) => (
+                  <button
+                    key={format.value}
+                    className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                      exportingFormat === format.value
+                        ? "border-teal-500 bg-teal-50 text-teal-700"
+                        : "border-gray-200 hover:border-teal-200 hover:bg-teal-50"
+                    }`}
+                    onClick={() => onSelectFormat?.(format.value)}
+                    disabled={isExporting}
+                  >
+                    <p className="text-sm font-semibold">{format.label}</p>
+                    <p className="text-xs text-gray-500">{format.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
       {showNewBtn && (
         <button className="btn accent bg-teal-500 text-white px-3 py-2 rounded-lg font-semibold">
@@ -127,6 +186,9 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingMessage, setProcessingMessage] = useState("");
   const [selectedUploader, setSelectedUploader] = useState("夫"); // 👈 ユーザー選択状態を追加
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [stats, setStats] = useState({
     totalReceipts: 0,
@@ -194,6 +256,21 @@ export default function Home() {
       setCategorySpending(sortedSpending);
     }
   }, [receipts]);
+
+  useEffect(() => {
+    if (!showExportMenu) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showExportMenu]);
 
   // レシート処理完了時のハンドラー
   const handleReceiptProcessed = (receipt: ReceiptData) => {
@@ -324,6 +401,62 @@ export default function Home() {
       fetchReceipts();
       setShowModal(false);
       setCurrentReceipt(null);
+    }
+  };
+
+  const getFilenameFromDisposition = (headerValue: string | null, fallback: string) => {
+    if (!headerValue) return fallback;
+    const utfMatch = headerValue.match(/filename\*=(?:UTF-8'')?([^;]+)/i);
+    if (utfMatch && utfMatch[1]) {
+      const cleaned = utfMatch[1].replace(/["']/g, "").trim();
+      try {
+        return decodeURIComponent(cleaned);
+      } catch {
+        return cleaned;
+      }
+    }
+    const simpleMatch = headerValue.match(/filename="?([^"]+)"?/i);
+    if (simpleMatch && simpleMatch[1]) {
+      return simpleMatch[1];
+    }
+    return fallback;
+  };
+
+  const handleExport = async (format: ExportFormat) => {
+    try {
+      setExportingFormat(format);
+      const response = await fetch(`/api/export?format=${format}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Export failed");
+      }
+
+      const blob = await response.blob();
+      const defaultFilename = `harina_receipts_${new Date()
+        .toISOString()
+        .replace(/[-:]/g, "")
+        .replace(/\.\d{3}Z$/, "Z")}.${format}`;
+      const filename = getFilenameFromDisposition(
+        response.headers.get("Content-Disposition"),
+        defaultFilename,
+      );
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`${EXPORT_LABEL_MAP[format]}形式でデータをダウンロードしました`);
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("エクスポート中にエラーが発生しました");
+    } finally {
+      setExportingFormat(null);
+      setShowExportMenu(false);
     }
   };
 
@@ -563,7 +696,14 @@ export default function Home() {
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
       <section className="overflow-y-auto">
-        <Header />
+        <Header
+          onExportToggle={() => setShowExportMenu((prev) => !prev)}
+          showExportMenu={showExportMenu}
+          onSelectFormat={handleExport}
+          isExporting={exportingFormat !== null}
+          exportingFormat={exportingFormat}
+          exportMenuRef={exportMenuRef}
+        />
         {renderMainContent()}
       </section>
 

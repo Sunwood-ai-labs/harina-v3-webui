@@ -48,6 +48,17 @@ interface DbUserStatRow {
   receipt_count: string;
 }
 
+interface DbReceiptWithItemsRow extends DbReceiptRow {
+  items: Array<{
+    name: string | null;
+    category: string | null;
+    subcategory: string | null;
+    quantity: number | null;
+    unit_price: string | null;
+    total_price: string | null;
+  }> | null;
+}
+
 // PostgreSQL接続プール
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || "postgres",
@@ -229,6 +240,71 @@ export async function getReceiptsFromDatabase(
     }
 
     return receipts;
+  } finally {
+    client.release();
+  }
+}
+
+// すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
+export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
+  if (isBuildTime) {
+    return [];
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    const result = await client.query(
+      `
+      SELECT
+        r.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'name', ri.name,
+              'category', ri.category,
+              'subcategory', ri.subcategory,
+              'quantity', ri.quantity,
+              'unit_price', ri.unit_price,
+              'total_price', ri.total_price
+            )
+            ORDER BY ri.id
+          ) FILTER (WHERE ri.id IS NOT NULL),
+          '[]'
+        ) AS items
+      FROM receipts r
+      LEFT JOIN receipt_items ri ON ri.receipt_id = r.id
+      GROUP BY r.id
+      ORDER BY r.processed_at DESC
+      `
+    );
+
+    return (result.rows as DbReceiptWithItemsRow[]).map((row) => ({
+      id: row.id,
+      filename: row.filename,
+      store_name: row.store_name,
+      store_address: row.store_address,
+      store_phone: row.store_phone,
+      transaction_date: row.transaction_date,
+      transaction_time: row.transaction_time,
+      receipt_number: row.receipt_number,
+      subtotal: parseFloat(row.subtotal) || 0,
+      tax: parseFloat(row.tax) || 0,
+      total_amount: parseFloat(row.total_amount) || 0,
+      payment_method: row.payment_method,
+      processed_at: row.processed_at,
+      image_path: row.image_path,
+      uploader: row.uploader,
+      items:
+        row.items?.map((item) => ({
+          name: item.name || "未登録商品",
+          category: item.category || "その他",
+          subcategory: item.subcategory || "",
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price ? parseFloat(item.unit_price) || 0 : 0,
+          total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
+        })) ?? [],
+    }));
   } finally {
     client.release();
   }
