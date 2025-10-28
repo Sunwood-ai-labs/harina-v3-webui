@@ -17,6 +17,8 @@ import {
   Square,
   X,
   SlidersHorizontal,
+  Save,
+  Loader2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -28,6 +30,38 @@ import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryS
 import { ALL_CATEGORIES, getSubcategoriesForCategory } from "../../utils/categoryCatalog";
 
 type ExportFormat = "csv" | "json" | "zip";
+
+type FiltersState = {
+  searchTerm: string;
+  category: string;
+  subcategory: string;
+  store: string;
+  uploader: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const DEFAULT_FILTERS: FiltersState = {
+  searchTerm: "",
+  category: "",
+  subcategory: "",
+  store: "",
+  uploader: "",
+  dateFrom: "",
+  dateTo: "",
+};
+
+const FILTER_STORAGE_KEY = "harina.receipts.filters.v1";
+
+const filtersAreActive = (filters: FiltersState) =>
+  Boolean(
+    filters.category ||
+      filters.subcategory ||
+      filters.store ||
+      filters.uploader ||
+      filters.dateFrom ||
+      filters.dateTo
+  );
 
 const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; description: string }> = [
   { value: "csv", label: "CSV (再インポート用)", description: "インポート機能と完全互換の形式" },
@@ -51,6 +85,23 @@ interface StatsState {
 
 export default function ReceiptsPage() {
   const router = useRouter();
+  const readStoredFilters = (): FiltersState => {
+    if (typeof window === "undefined") {
+      return { ...DEFAULT_FILTERS };
+    }
+    const raw = window.sessionStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) {
+      return { ...DEFAULT_FILTERS };
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<FiltersState>;
+      return { ...DEFAULT_FILTERS, ...parsed };
+    } catch (error) {
+      console.warn("Failed to parse stored receipt filters", error);
+      return { ...DEFAULT_FILTERS };
+    }
+  };
+  const hasHydratedFiltersRef = useRef(false);
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [stats, setStats] = useState<StatsState>({
     totalReceipts: 0,
@@ -73,15 +124,27 @@ export default function ReceiptsPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [filters, setFilters] = useState({
-    searchTerm: "",
-    category: "",
-    subcategory: "",
-    store: "",
-    uploader: "",
-    dateFrom: "",
-    dateTo: "",
-  });
+  const [filters, setFilters] = useState<FiltersState>({ ...DEFAULT_FILTERS });
+  const [showFilters, setShowFilters] = useState(false);
+  const [listBulkCategory, setListBulkCategory] = useState("");
+  const [listBulkSubcategory, setListBulkSubcategory] = useState("");
+  const [isListBulkSaving, setIsListBulkSaving] = useState(false);
+  useEffect(() => {
+    const stored = readStoredFilters();
+    setFilters(stored);
+    setShowFilters(filtersAreActive(stored));
+    hasHydratedFiltersRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!hasHydratedFiltersRef.current) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+  }, [filters]);
+  const hasActiveFilters = filtersAreActive(filters);
   const categoryOptions = useMemo(() => {
     const merged = new Set<string>(ALL_CATEGORIES);
     receipts.forEach((receipt) =>
@@ -123,6 +186,10 @@ export default function ReceiptsPage() {
     });
     return Array.from(base).sort((a, b) => a.localeCompare(b, "ja"));
   }, [filters.category, receipts]);
+  const listBulkSubcategoryOptions = useMemo(() => {
+    if (!listBulkCategory) return [];
+    return getSubcategoriesForCategory(listBulkCategory);
+  }, [listBulkCategory]);
 
   useEffect(() => {
     fetchReceipts();
@@ -235,15 +302,6 @@ export default function ReceiptsPage() {
     setSelectedIds((prev) => prev.filter((id) => allSelectableIds.includes(id)));
   }, [allSelectableIds]);
 
-  const [showFilters, setShowFilters] = useState(false);
-  const hasActiveFilters =
-    filters.category ||
-    filters.subcategory ||
-    filters.store ||
-    filters.uploader ||
-    filters.dateFrom ||
-    filters.dateTo;
-
   const fetchReceipts = async () => {
     try {
       setIsLoading(true);
@@ -265,6 +323,33 @@ export default function ReceiptsPage() {
         });
       }
       setSelectedIds([]);
+      if (Array.isArray(data.receipts)) {
+        setFilters((prev) => {
+          const next: FiltersState = {
+            ...prev,
+            store:
+              prev.store && data.receipts.some((receipt: ReceiptData) => receipt.store_name === prev.store)
+                ? prev.store
+                : "",
+            uploader:
+              prev.uploader && data.receipts.some((receipt: ReceiptData) => receipt.uploader === prev.uploader)
+                ? prev.uploader
+                : "",
+            subcategory:
+              prev.category && getSubcategoriesForCategory(prev.category).includes(prev.subcategory)
+                ? prev.subcategory
+                : "",
+          };
+          if (
+            next.store === prev.store &&
+            next.uploader === prev.uploader &&
+            next.subcategory === prev.subcategory
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      }
     } catch (error) {
       console.error(error);
       toast.error("レシートデータの取得に失敗しました");
@@ -486,15 +571,83 @@ export default function ReceiptsPage() {
   };
 
   const resetFilters = () => {
-    setFilters({
-      searchTerm: "",
-      category: "",
-      subcategory: "",
-      store: "",
-      uploader: "",
-      dateFrom: "",
-      dateTo: "",
-    });
+    setFilters({ ...DEFAULT_FILTERS });
+    setShowFilters(false);
+  };
+
+  const handleListBulkCategoryChange = (value: string) => {
+    setListBulkCategory(value);
+    if (!value) {
+      setListBulkSubcategory("");
+      return;
+    }
+    const options = getSubcategoriesForCategory(value);
+    if (!options.includes(listBulkSubcategory)) {
+      setListBulkSubcategory("");
+    }
+  };
+
+  const handleListBulkSave = async () => {
+    if (selectedIds.length === 0) {
+      toast.info("レシートを選択してください");
+      return;
+    }
+    const trimmedCategory = listBulkCategory.trim();
+    if (!trimmedCategory) {
+      toast.warn("カテゴリを選択してください");
+      return;
+    }
+    const trimmedSubcategory = listBulkSubcategory.trim();
+    setIsListBulkSaving(true);
+    try {
+      const response = await fetch("/api/receipt-items/bulk-update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receiptIds: selectedIds,
+          category: trimmedCategory,
+          subcategory: trimmedSubcategory,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "レシートの更新に失敗しました");
+      }
+
+      const result = await response.json().catch(() => ({}));
+      const updatedItems =
+        typeof result.updatedItems === "number" ? result.updatedItems : undefined;
+      const selectedSet = new Set(selectedIds);
+      setReceipts((prev) =>
+        prev.map((receipt) =>
+          receipt.id && selectedSet.has(receipt.id)
+            ? {
+                ...receipt,
+                items: receipt.items?.map((item) => ({
+                  ...item,
+                  category: trimmedCategory,
+                  subcategory: trimmedSubcategory || "",
+                })),
+              }
+            : receipt
+        )
+      );
+      toast.success(
+        updatedItems !== undefined
+          ? `カテゴリを更新しました（${updatedItems}件）`
+          : "カテゴリを更新しました"
+      );
+    } catch (error) {
+      console.error("Failed to bulk update receipts:", error);
+      toast.error(
+        error instanceof Error ? error.message : "レシートの更新に失敗しました"
+      );
+    } finally {
+      setIsListBulkSaving(false);
+    }
   };
 
   return (
@@ -718,39 +871,89 @@ export default function ReceiptsPage() {
         </section>
 
         {selectionMode && (
-          <section className="bg-white border border-washi-300 rounded-3xl shadow-sm px-5 py-4 flex flex-wrap items-center gap-3 justify-between">
-            <div className="flex items-center gap-3 text-sm text-sumi-600">
-              <CheckSquare size={16} className="text-teal-600" />
-              <span>
-                {hasSelection
-                  ? `${selectedIds.length}件のレシートを選択中`
-                  : "削除したいレシートを選択してください"}
-              </span>
+          <section className="bg-white border border-washi-300 rounded-3xl shadow-sm px-5 py-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-3 justify-between">
+              <div className="flex items-center gap-3 text-sm text-sumi-600">
+                <CheckSquare size={16} className="text-teal-600" />
+                <span>
+                  {hasSelection
+                    ? `${selectedIds.length}件のレシートを選択中`
+                    : "操作したいレシートを選択してください"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-washi-300 text-sumi-600 hover:bg-washi-100 text-xs sm:text-sm"
+                  onClick={handleSelectAll}
+                >
+                  {isAllSelected ? (
+                    <>
+                      <X size={14} />
+                      全選択解除
+                    </>
+                  ) : (
+                    <>
+                      <Square size={14} />
+                      全選択
+                    </>
+                  )}
+                </button>
+                <button
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
+                  onClick={handleBulkDelete}
+                  disabled={!hasSelection || isDeleting}
+                >
+                  <Trash2 size={16} />
+                  {isDeleting ? "削除中..." : "選択したレシートを削除"}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label htmlFor="list-bulk-category" className="text-xs font-semibold text-sumi-500">
+                  選択レシートのカテゴリ
+                </label>
+                <select
+                  id="list-bulk-category"
+                  value={listBulkCategory}
+                  onChange={(event) => handleListBulkCategoryChange(event.target.value)}
+                  className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                >
+                  <option value="">選択してください</option>
+                  {categoryOptions.map((category) => (
+                    <option key={`bulk-list-${category}`} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label htmlFor="list-bulk-subcategory" className="text-xs font-semibold text-sumi-500">
+                  サブカテゴリ
+                </label>
+                <select
+                  id="list-bulk-subcategory"
+                  value={listBulkSubcategory}
+                  onChange={(event) => setListBulkSubcategory(event.target.value)}
+                  className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  disabled={!listBulkCategory}
+                >
+                  <option value="">選択なし</option>
+                  {listBulkSubcategoryOptions.map((subcategory) => (
+                    <option key={`bulk-list-sub-${subcategory}`} value={subcategory}>
+                      {subcategory}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-washi-300 text-sumi-600 hover:bg-washi-100 text-xs sm:text-sm"
-                onClick={handleSelectAll}
+                type="button"
+                onClick={handleListBulkSave}
+                disabled={!hasSelection || isListBulkSaving}
+                className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isAllSelected ? (
-                  <>
-                    <X size={14} />
-                    全選択解除
-                  </>
-                ) : (
-                  <>
-                    <Square size={14} />
-                    全選択
-                  </>
-                )}
-              </button>
-              <button
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
-                onClick={handleBulkDelete}
-                disabled={!hasSelection || isDeleting}
-              >
-                <Trash2 size={16} />
-                {isDeleting ? "削除中..." : "選択したレシートを削除"}
+                {isListBulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                選択レシートを更新
               </button>
             </div>
           </section>

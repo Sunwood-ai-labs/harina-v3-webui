@@ -74,6 +74,10 @@ export const CATEGORY_CATALOG: CategoryCatalogEntry[] = [
     ],
   },
   {
+    name: '割引',
+    subcategories: ['値引き', 'クーポン', 'ポイント利用', 'その他'],
+  },
+  {
     name: 'その他',
     subcategories: ['ギフト・プレゼント', 'ペット用品', '園芸用品', 'その他'],
   },

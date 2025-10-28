@@ -422,6 +422,50 @@ export async function updateReceiptItem(
   }
 }
 
+export async function bulkUpdateReceiptItemsByReceiptIds(
+  receiptIds: number[],
+  updates: { category?: string | null; subcategory?: string | null }
+): Promise<number> {
+  if (receiptIds.length === 0) {
+    return 0;
+  }
+
+  if (isBuildTime) {
+    throw new Error("Updates are not available during build time");
+  }
+
+  const fields: string[] = [];
+  const values: Array<string | null> = [];
+
+  if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+    fields.push(`category = $${fields.length + 1}`);
+    values.push(updates.category ?? null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "subcategory")) {
+    fields.push(`subcategory = $${fields.length + 1}`);
+    values.push(updates.subcategory ?? null);
+  }
+
+  if (fields.length === 0) {
+    return 0;
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    const query = `
+      UPDATE receipt_items
+      SET ${fields.join(", ")}
+      WHERE receipt_id = ANY($${fields.length + 1}::int[])
+    `;
+    const result = await client.query(query, [...values, receiptIds]);
+    return result.rowCount ?? 0;
+  } finally {
+    client.release();
+  }
+}
+
 // すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
 export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
   if (isBuildTime) {
