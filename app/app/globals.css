@@ -35,19 +35,22 @@ body {
 }
 
 .app {
-  display: grid;
-  grid-template-columns: 280px 1fr;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .app {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+  }
 }
 
 /* Sidebar */
 .sidebar {
   background: var(--panel);
   border-right: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  padding: 20px 16px;
 }
 
 .brand {
@@ -481,15 +484,6 @@ tbody tr td:last-child {
   .content-grid {
     grid-template-columns: 1fr;
   }
-  
-  .sidebar {
-    position: static;
-    height: auto;
-  }
-  
-  .app {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 640px) {
@@ -503,7 +497,7 @@ tbody tr td:last-child {
   }
   
   .cards {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
 }
 /* Upload Zone */
