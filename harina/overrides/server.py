@@ -5,7 +5,8 @@ import sys
 import tempfile
 import base64
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+from xml.etree import ElementTree as ET
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
@@ -17,6 +18,31 @@ from loguru import logger
 
 from .core import HarinaCore
 from .utils import convert_xml_to_csv
+from .category_sync import get_categories_xml, sync_categories_with_database
+
+
+def _category_stats(xml_payload: str) -> Tuple[int, int]:
+    try:
+        root = ET.fromstring(xml_payload)
+    except ET.ParseError:
+        return 0, 0
+
+    categories = root.findall("category")
+    subcategories = root.findall(".//subcategory")
+    return len(categories), len(subcategories)
+
+
+def _log_category_snapshot(xml_payload: Optional[str]) -> None:
+    if not xml_payload:
+        logger.warning("⚠️ データベースからカテゴリ情報を取得できませんでした")
+        return
+
+    category_count, subcategory_count = _category_stats(xml_payload)
+    logger.info(
+        "📚 カテゴリ同期完了: カテゴリ {} 件 / サブカテゴリ {} 件",
+        category_count,
+        subcategory_count,
+    )
 
 
 def setup_environment():
@@ -84,7 +110,28 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health_check():
-        return {"status": "healthy", "service": "harina-v3-api"}
+        snapshot = get_categories_xml()
+        category_count, subcategory_count = _category_stats(snapshot) if snapshot else (0, 0)
+        return {
+            "status": "healthy",
+            "service": "harina-v3-api",
+            "categories": {
+                "count": category_count,
+                "subcategories": subcategory_count,
+            },
+        }
+
+    @app.post("/maintenance/refresh-categories")
+    async def refresh_categories():
+        snapshot = sync_categories_with_database() or get_categories_xml(refresh=True)
+        if not snapshot:
+            raise HTTPException(status_code=500, detail="カテゴリ情報を更新できませんでした")
+        category_count, subcategory_count = _category_stats(snapshot)
+        return {
+            "status": "ok",
+            "categories": category_count,
+            "subcategories": subcategory_count,
+        }
 
     @app.post("/process", response_model=ReceiptResponse)
     async def process_receipt(
@@ -200,6 +247,14 @@ def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
     logger.info("=" * 50)
 
     setup_environment()
+
+    snapshot = sync_categories_with_database()
+    if snapshot is None:
+        snapshot = get_categories_xml(refresh=True)
+    else:
+        # Ensure subsequent lookups use the latest data from the database cache
+        get_categories_xml(refresh=True)
+    _log_category_snapshot(snapshot)
 
     app = create_app()
 

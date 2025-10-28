@@ -6,12 +6,16 @@ RUN git clone -b develop https://github.com/Sunwood-ai-labs/harina-v3-cli.git /a
 COPY overrides/ /tmp/harina-overrides
 RUN cp /tmp/harina-overrides/server.py /app/harina/server.py \
     && cp /tmp/harina-overrides/core.py /app/harina/core.py \
+    && cp /tmp/harina-overrides/category_sync.py /app/harina/category_sync.py \
     && cp /tmp/harina-overrides/product_categories.xml /app/harina/product_categories.xml
 
 WORKDIR /app
 
 # uvを使って依存関係をインストール
 RUN uv sync --frozen
+
+# Install additional runtime dependencies provided by overrides
+RUN pip install --no-cache-dir "psycopg[binary]"
 
 # ポート8000を公開
 EXPOSE 8000

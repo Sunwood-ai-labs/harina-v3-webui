@@ -2,6 +2,23 @@
 
 -- Create database if not exists (this is handled by docker-compose environment variables)
 
+-- Create product categories table
+CREATE TABLE IF NOT EXISTS categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS subcategories (
+    id SERIAL PRIMARY KEY,
+    category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (category_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_subcategories_category_id ON subcategories(category_id);
+
 -- Create receipts table
 CREATE TABLE IF NOT EXISTS receipts (
     id SERIAL PRIMARY KEY,
@@ -39,6 +56,10 @@ CREATE INDEX IF NOT EXISTS idx_receipts_store_name ON receipts(store_name);
 CREATE INDEX IF NOT EXISTS idx_receipts_uploader ON receipts(uploader);
 CREATE INDEX IF NOT EXISTS idx_receipt_items_receipt_id ON receipt_items(receipt_id);
 CREATE INDEX IF NOT EXISTS idx_receipt_items_category ON receipt_items(category);
+
+-- Ensure default ordering for newly inserted categories
+UPDATE categories SET display_order = id WHERE display_order = 0;
+UPDATE subcategories SET display_order = id WHERE display_order = 0;
 
 -- Insert sample data for testing
 INSERT INTO receipts (
