@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 import aiohttp
 import discord
@@ -23,6 +23,22 @@ ALLOWED_CHANNEL_IDS = {
 }
 MAX_FILE_SIZE_MB = float(os.getenv("DISCORD_MAX_FILE_MB", "15"))
 MAX_FILE_BYTES = int(MAX_FILE_SIZE_MB * 1024 * 1024)
+
+
+def parse_channel_uploaders(raw_mapping: str) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for item in raw_mapping.split(","):
+        if not item.strip() or ":" not in item:
+            continue
+        channel, uploader = item.split(":", 1)
+        channel_key = channel.strip().lower()
+        uploader_value = uploader.strip()
+        if channel_key and uploader_value:
+            mapping[channel_key] = uploader_value
+    return mapping
+
+
+CHANNEL_UPLOADERS = parse_channel_uploaders(os.getenv("DISCORD_CHANNEL_UPLOADERS", ""))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -60,6 +76,7 @@ async def send_receipt_to_api(
     file_bytes: bytes,
     filename: str,
     content_type: Optional[str] = None,
+    uploader: Optional[str] = None,
 ) -> dict:
     form = aiohttp.FormData()
     form.add_field(
@@ -69,7 +86,7 @@ async def send_receipt_to_api(
         content_type=content_type or "application/octet-stream",
     )
     form.add_field("model", DEFAULT_MODEL)
-    form.add_field("uploader", DEFAULT_UPLOADER)
+    form.add_field("uploader", uploader or DEFAULT_UPLOADER)
 
     async with session.post(RECEIPT_API_URL, data=form) as resp:
         if resp.status >= 400:
@@ -139,6 +156,8 @@ class ReceiptBot(discord.Client):
         if ALLOWED_CHANNEL_IDS and message.channel.id not in ALLOWED_CHANNEL_IDS:
             return
 
+        uploader_override = self._resolve_uploader(message)
+
         image_attachments = [
             att
             for att in message.attachments
@@ -176,6 +195,7 @@ class ReceiptBot(discord.Client):
                     file_bytes,
                     attachment.filename,
                     content_type,
+                    uploader_override,
                 )
                 response_msg = build_result_message(result)
                 await status_msg.edit(content=response_msg)
@@ -184,6 +204,24 @@ class ReceiptBot(discord.Client):
                 await status_msg.edit(content=f"❌ `{attachment.filename}` の処理に失敗しました: {exc}")
 
         await response_channel.close()
+
+    def _resolve_uploader(self, message: discord.Message) -> Optional[str]:
+        channel_name = None
+
+        if isinstance(message.channel, discord.Thread):
+            if message.channel.parent:
+                channel_name = message.channel.parent.name
+            else:
+                channel_name = message.channel.name
+        elif hasattr(message.channel, "name"):
+            channel_name = message.channel.name
+
+        if channel_name:
+            uploader = CHANNEL_UPLOADERS.get(channel_name.lower())
+            if uploader:
+                return uploader
+
+        return None
 
 
 def main():
