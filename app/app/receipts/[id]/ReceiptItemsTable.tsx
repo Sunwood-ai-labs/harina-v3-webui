@@ -5,7 +5,7 @@ import { toast } from 'react-toastify'
 import { Loader2, RotateCcw, Save } from 'lucide-react'
 import { ReceiptItem } from '../../types'
 import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
-import { ALL_CATEGORIES, CATEGORY_CATALOG, getSubcategoriesForCategory } from '../../utils/categoryCatalog'
+import { ALL_CATEGORIES, getSubcategoriesForCategory } from '../../utils/categoryCatalog'
 
 interface ReceiptItemsTableProps {
   items: ReceiptItem[]
@@ -26,6 +26,9 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
       isSaving: false,
     }))
   )
+  const [bulkCategory, setBulkCategory] = useState('')
+  const [bulkSubcategory, setBulkSubcategory] = useState('')
+  const [isBulkSaving, setIsBulkSaving] = useState(false)
 
   const suggestedCategories = useMemo(() => {
     const set = new Set<string>(ALL_CATEGORIES)
@@ -36,6 +39,10 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     })
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ja'))
   }, [items])
+  const bulkSubcategoryOptions = useMemo(() => {
+    if (!bulkCategory) return []
+    return getSubcategoriesForCategory(bulkCategory)
+  }, [bulkCategory])
 
   const updateRow = (id: number | undefined, updater: (row: ItemRowState) => ItemRowState) => {
     if (!id) return
@@ -69,6 +76,40 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     }))
   }
 
+  const persistRowUpdate = async (row: ItemRowState) => {
+    if (!row.id) {
+      throw new Error('IDの無いレコードは更新できません')
+    }
+    const trimmedCategory = row.draftCategory.trim()
+    const trimmedSubcategory = row.draftSubcategory.trim()
+    const payload: { category?: string | null; subcategory?: string | null } = {}
+    if (trimmedCategory !== (row.category ?? '')) {
+      payload.category = trimmedCategory || null
+    }
+    if (trimmedSubcategory !== (row.subcategory ?? '')) {
+      payload.subcategory = trimmedSubcategory || null
+    }
+    if (Object.keys(payload).length === 0) {
+      return null
+    }
+
+    const response = await fetch(`/api/receipt-items/${row.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || '更新に失敗しました')
+    }
+
+    const updated: ReceiptItem = await response.json()
+    return updated
+  }
+
   const handleSave = async (id: number | undefined) => {
     if (!id) return
 
@@ -91,24 +132,15 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     )
 
     try {
-      const response = await fetch(`/api/receipt-items/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          category: isCategoryChanged ? trimmedCategory || null : undefined,
-          subcategory: isSubcategoryChanged ? trimmedSubcategory || null : undefined,
-        }),
-      })
+      const updated = await persistRowUpdate(row)
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => null)
-        throw new Error(error?.error || '更新に失敗しました')
+      if (!updated) {
+        setRows(prev =>
+          prev.map(r => (r.id === id ? { ...r, isSaving: false } : r))
+        )
+        toast.info('変更はありません')
+        return
       }
-
-      const updated: ReceiptItem = await response.json()
-
       setRows(prev =>
         prev.map(r =>
           r.id === id
@@ -136,6 +168,100 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     }
   }
 
+  const handleBulkCategorySelection = (value: string) => {
+    setBulkCategory(value)
+    if (!value) {
+      setBulkSubcategory('')
+      return
+    }
+    const options = getSubcategoriesForCategory(value)
+    if (!options.includes(bulkSubcategory)) {
+      setBulkSubcategory('')
+    }
+  }
+
+  const handleBulkApply = () => {
+    if (!bulkCategory) {
+      toast.warn('カテゴリを選択してください')
+      return
+    }
+    const availableSubcategories = getSubcategoriesForCategory(bulkCategory)
+    const subcategoryToApply =
+      bulkSubcategory && availableSubcategories.includes(bulkSubcategory)
+        ? bulkSubcategory
+        : ''
+
+    setRows(prev =>
+      prev.map(row => ({
+        ...row,
+        draftCategory: bulkCategory,
+        draftSubcategory: subcategoryToApply,
+      }))
+    )
+    toast.success('全ての商品にカテゴリを適用しました')
+  }
+
+  const handleBulkSave = async () => {
+    const dirtyRows = rows.filter(
+      row =>
+        row.id &&
+        (row.draftCategory.trim() !== (row.category ?? '') ||
+          row.draftSubcategory.trim() !== (row.subcategory ?? ''))
+    )
+
+    if (dirtyRows.length === 0) {
+      toast.info('保存対象がありません')
+      return
+    }
+
+    const dirtyIds = new Set(dirtyRows.map(row => row.id as number))
+    setIsBulkSaving(true)
+    setRows(prev =>
+      prev.map(row =>
+        row.id && dirtyIds.has(row.id) ? { ...row, isSaving: true } : row
+      )
+    )
+
+    try {
+      for (const row of dirtyRows) {
+        const updated = await persistRowUpdate(row)
+        if (updated) {
+          setRows(prev =>
+            prev.map(r =>
+              r.id === row.id
+                ? {
+                    ...r,
+                    category: updated.category,
+                    subcategory: updated.subcategory,
+                    draftCategory: updated.category ?? '',
+                    draftSubcategory: updated.subcategory ?? '',
+                    isSaving: false,
+                  }
+                : r
+            )
+          )
+        } else {
+          setRows(prev =>
+            prev.map(r => (r.id === row.id ? { ...r, isSaving: false } : r))
+          )
+        }
+      }
+      toast.success('カテゴリを一括更新しました')
+    } catch (error) {
+      console.error('Failed to bulk update receipt items:', error)
+      toast.error(
+        error instanceof Error ? error.message : '一括更新に失敗しました'
+      )
+      setRows(prev =>
+        prev.map(row =>
+          row.id && dirtyIds.has(row.id) ? { ...row, isSaving: false } : row
+        )
+      )
+    } finally {
+      setIsBulkSaving(false)
+    }
+  }
+
   if (rows.length === 0) {
     return (
       <div className="px-6 py-12 text-center text-sm text-sumi-500">
@@ -146,6 +272,65 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
 
   return (
     <div className="overflow-hidden">
+      <div className="flex flex-wrap items-end justify-between gap-3 px-4 pb-4">
+        <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="bulk-category" className="text-xs font-semibold text-sumi-500">
+              カテゴリ一括適用
+            </label>
+            <select
+              id="bulk-category"
+              value={bulkCategory}
+              onChange={event => handleBulkCategorySelection(event.target.value)}
+              className="min-w-[160px] rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+            >
+              <option value="">選択してください</option>
+              {suggestedCategories.map(option => (
+                <option key={`bulk-${option}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="bulk-subcategory" className="text-xs font-semibold text-sumi-500">
+              サブカテゴリ
+            </label>
+            <select
+              id="bulk-subcategory"
+              value={bulkSubcategory}
+              onChange={event => setBulkSubcategory(event.target.value)}
+              className="min-w-[160px] rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+              disabled={!bulkCategory}
+            >
+              <option value="">選択なし</option>
+              {bulkSubcategoryOptions.map(option => (
+                <option key={`bulk-sub-${option}`} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleBulkApply}
+            className="inline-flex items-center gap-2 rounded-xl border border-washi-300 bg-white px-4 py-2 text-sm font-semibold text-sumi-600 hover:bg-washi-100"
+          >
+            すべてに適用
+          </button>
+          <button
+            type="button"
+            onClick={handleBulkSave}
+            disabled={isBulkSaving}
+            className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isBulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+            一括保存
+          </button>
+        </div>
+      </div>
       <table className="min-w-full divide-y divide-washi-200">
         <thead className="bg-washi-100">
           <tr>
