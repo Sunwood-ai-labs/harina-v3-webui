@@ -90,6 +90,8 @@ docker-compose exec postgres psql -U receipt_user -d receipt_db
 3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
-- Discordメッセージに複数画像を添付した場合でも順次処理され、同一スレッドに結果が投稿されます。
 
-Discordメッセージに複数画像を添付した場合でも順次処理され、同一スレッドに結果が投稿され、完了後はスレッドが自動でクローズされます。
+### Discordボットメモ
+
+- Discordメッセージに複数画像を添付した場合でも順次処理され、同一スレッドに結果が投稿され、完了後はスレッドが自動でクローズされます。
+- `DISCORD_CHANNEL_UPLOADERS` に `チャンネル名:アップローダー` を設定すると、保存時の `uploader` フィールドをチャンネル単位で切り替えられます。

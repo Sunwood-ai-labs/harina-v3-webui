@@ -1,12 +1,13 @@
 # Discord Receipt Bot
 
-このディスコードボットは、画像が添付されたメッセージを受信すると `app` サービスの `/api/process-receipt` エンドポイントへ転送し、解析結果をチャンネルへ返信します。
+このディスコードボットは、画像が添付されたメッセージを受信すると `app` サービスの `/api/process-receipt` エンドポイントへ転送し、解析結果をチャンネルへ返信します。1つのメッセージに複数画像が含まれていても順次処理し、完了後は生成したスレッドを自動的にクローズします。
 
 ## 主な機能
 
-- メッセージの最初の画像添付を自動で取得
+- メッセージ内の画像添付をすべて取得し順次処理
 - 既存のレシート処理API (Next.js 経由) へ画像をアップロード
 - 合計金額や商品リストなどの解析結果をメッセージで返信
+- 処理が完了したスレッドを自動でアーカイブ＆ロック
 
 ## 必要な環境変数
 
@@ -18,6 +19,7 @@
 | `RECEIPT_MODEL` | 使用するモデル名 | `gemini` |
 | `RECEIPT_UPLOADER` | DBに保存する際のアップローダ名 | `discord` |
 | `DISCORD_MAX_FILE_MB` | 処理を許可する最大ファイルサイズ(MB) | `15` |
+| `DISCORD_CHANNEL_UPLOADERS` | `チャンネル名:アップローダー` のカンマ区切りマッピング | `v3_maki:maki,v3_yome:yome` |
 
 > **Note**: 画像解析APIへアクセスするため、`discord-bot` サービスは docker-compose の `receipt_network` に接続されています。
 
@@ -33,3 +35,5 @@ python bot.py
 ```
 
 `docker-compose` 経由では `discord-bot` サービスが自動的に起動します。
+
+> `DISCORD_CHANNEL_UPLOADERS` を設定すると、チャンネルごとにデータベースへ保存される `uploader` フィールドを上書きできます。指定がないチャンネルでは `RECEIPT_UPLOADER` の値が使われます。

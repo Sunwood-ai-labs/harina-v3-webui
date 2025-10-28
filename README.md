@@ -58,9 +58,12 @@ DISCORD_BOT_TOKEN=your_discord_bot_token_here
 DISCORD_ALLOWED_CHANNEL_IDS=123456789012345678  # カンマ区切りで複数指定可
 DISCORD_RECEIPT_MODEL=gemini
 DISCORD_RECEIPT_UPLOADER=discord
+DISCORD_CHANNEL_UPLOADERS=v3_maki:maki,v3_yome:yome
 ```
 
 > **注意:** DiscordのBot設定で「MESSAGE CONTENT INTENT」を有効にし、添付ファイルを扱うチャンネルIDを指定すると誤反応を防げます。
+
+`DISCORD_CHANNEL_UPLOADERS` に `チャンネル名:アップローダー` の形式で指定すると、チャンネル単位でアップロード者名を上書きできます（カンマ区切りで複数指定可）。例では `#v3_maki` に投稿された画像は `maki`、`#v3_yome` は `yome` として保存されます。
 
 複数画像を同時に投稿した場合は、それぞれ個別の進捗メッセージが同じスレッドに投稿され、解析結果が順次表示されます。処理完了後はスレッドが自動でアーカイブされます。
 
