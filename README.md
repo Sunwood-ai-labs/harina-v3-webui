@@ -26,6 +26,28 @@ OPENAI_API_KEY=your_openai_api_key_here
 ANTHROPIC_API_KEY=your_anthropic_api_key_here
 ```
 
+### 🔒 1.5 HTTPS用証明書の準備（nginxリバースプロキシ）
+
+`docker-compose` には HTTPS 対応の nginx リバースプロキシが含まれています。公開環境では信頼できる
+証明書を、開発環境では自己署名証明書を下記のパスに配置してください。
+
+```text
+nginx/certs/fullchain.pem   # サーバー証明書 (チェーン付き)
+nginx/certs/privkey.pem     # 秘密鍵
+```
+
+自己署名証明書を生成する場合は次のコマンドが利用できます。
+
+```bash
+openssl req -x509 -nodes -newkey rsa:4096 \
+  -keyout nginx/certs/privkey.pem \
+  -out nginx/certs/fullchain.pem \
+  -days 365 \
+  -subj "/CN=localhost"
+```
+
+ブラウザで警告が表示される場合は、生成した証明書を信頼済みに追加してください。
+
 ### 2. アプリケーションの起動
 
 ```bash
@@ -35,8 +57,9 @@ docker-compose up --build
 
 ### 3. アクセス
 
-- **フロントエンド**: http://localhost:3000
-- **バックエンドAPI**: http://localhost:8001
+- **フロントエンド (nginx経由)**: https://localhost
+- **フロントエンド (開発用ポート直接)**: http://localhost:3010
+- **バックエンドAPI (harina)**: http://localhost:8001
 - **API ドキュメント**: http://localhost:8001/docs
 - **データベース管理UI**: http://localhost:3001
 
