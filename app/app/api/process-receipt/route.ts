@@ -150,7 +150,8 @@ export async function POST(request: NextRequest) {
 
     // HARINAサービスにファイルを送信
     const harinaFormData = new FormData()
-    harinaFormData.append('file', file)
+    const harinaBlob = new Blob([buffer], { type: file.type || 'application/octet-stream' })
+    harinaFormData.append('file', harinaBlob, file.name)
     
     // モデル名を正しい形式に変換
     let harinaModel = 'gemini/gemini-2.5-flash' // デフォルト
