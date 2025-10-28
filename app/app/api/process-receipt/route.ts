@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ReceiptData } from '../../types'
-import { saveReceiptToDatabase } from '../../lib/database'
+import { saveReceiptToDatabase, getProcessingPrompt } from '../../lib/database'
 import { parseString } from 'xml2js'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -121,6 +121,13 @@ export async function POST(request: NextRequest) {
     const model = formData.get('model') as string || 'gemini'
     const uploader = formData.get('uploader') as string || '夫' // 👈 この行を追加
 
+    let additionalPrompt = ''
+    try {
+      additionalPrompt = await getProcessingPrompt()
+    } catch (error) {
+      console.error('Failed to load additional processing prompt:', error)
+    }
+
     if (!file) {
       return NextResponse.json(
         { error: 'ファイルが選択されていません' },
@@ -163,6 +170,9 @@ export async function POST(request: NextRequest) {
     
     harinaFormData.append('model', harinaModel)
     harinaFormData.append('format', 'xml') // XMLフォーマットで取得
+    if (additionalPrompt && additionalPrompt.trim().length > 0) {
+      harinaFormData.append('instructions', additionalPrompt.trim())
+    }
 
     console.log('Sending request to HARINA service...')
     const harinaResponse = await fetch(`${process.env.HARINA_API_URL || 'http://harina:8000'}/process`, {

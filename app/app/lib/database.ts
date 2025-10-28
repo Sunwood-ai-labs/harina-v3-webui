@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import { ReceiptData, ReceiptItem } from "../types";
 
 // データベースから取得するレシートの型定義
@@ -50,6 +50,7 @@ interface DbUserStatRow {
 
 interface DbReceiptWithItemsRow extends DbReceiptRow {
   items: Array<{
+    id?: number | string | null;
     name: string | null;
     category: string | null;
     subcategory: string | null;
@@ -57,6 +58,26 @@ interface DbReceiptWithItemsRow extends DbReceiptRow {
     unit_price: string | null;
     total_price: string | null;
   }> | null;
+}
+
+interface DbProcessingSettingsRow {
+  additional_prompt: string;
+}
+
+async function ensureProcessingSettingsTable(client: PoolClient) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS processing_settings (
+      id SERIAL PRIMARY KEY,
+      additional_prompt TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.query(`
+    INSERT INTO processing_settings (id, additional_prompt)
+    VALUES (1, '')
+    ON CONFLICT (id) DO NOTHING
+  `);
 }
 
 // PostgreSQL接続プール
@@ -210,6 +231,7 @@ export async function getReceiptsFromDatabase(
 
       const items: ReceiptItem[] = itemsResult.rows.map(
         (item: DbReceiptItemRow) => ({
+          id: item.id,
           name: item.name,
           category: item.category,
           subcategory: item.subcategory,
@@ -270,6 +292,7 @@ export async function getReceiptById(id: number): Promise<ReceiptData | null> {
     )
 
     const items: ReceiptItem[] = itemsResult.rows.map((item: DbReceiptItemRow) => ({
+      id: item.id,
       name: item.name,
       category: item.category,
       subcategory: item.subcategory,
@@ -341,6 +364,64 @@ export async function deleteReceiptsByIds(ids: number[]): Promise<{ deletedRecei
   }
 }
 
+export async function updateReceiptItem(
+  itemId: number,
+  updates: { category?: string | null; subcategory?: string | null }
+): Promise<ReceiptItem | null> {
+  if (isBuildTime) {
+    throw new Error("Updates are not available during build time");
+  }
+
+  const fields: string[] = [];
+  const values: Array<string | number | null> = [];
+  let parameterIndex = 1;
+
+  if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+    fields.push(`category = $${parameterIndex++}`);
+    values.push(updates.category ?? null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "subcategory")) {
+    fields.push(`subcategory = $${parameterIndex++}`);
+    values.push(updates.subcategory ?? null);
+  }
+
+  if (fields.length === 0) {
+    return null;
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    values.push(itemId);
+    const query = `
+      UPDATE receipt_items
+      SET ${fields.join(", ")}
+      WHERE id = $${parameterIndex}
+      RETURNING *
+    `;
+
+    const result = await client.query(query, values);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0] as DbReceiptItemRow;
+    return {
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      subcategory: row.subcategory,
+      quantity: row.quantity,
+      unit_price: parseFloat(row.unit_price) || 0,
+      total_price: parseFloat(row.total_price) || 0,
+    };
+  } finally {
+    client.release();
+  }
+}
+
 // すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
 export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
   if (isBuildTime) {
@@ -356,7 +437,8 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
         r.*,
         COALESCE(
           json_agg(
-            json_build_object(
+          json_build_object(
+              'id', ri.id,
               'name', ri.name,
               'category', ri.category,
               'subcategory', ri.subcategory,
@@ -392,14 +474,24 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
       image_path: row.image_path,
       uploader: row.uploader,
       items:
-        row.items?.map((item) => ({
-          name: item.name || "未登録商品",
-          category: item.category || "その他",
-          subcategory: item.subcategory || "",
-          quantity: item.quantity || 1,
-          unit_price: item.unit_price ? parseFloat(item.unit_price) || 0 : 0,
-          total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
-        })) ?? [],
+        row.items?.map((item) => {
+          const itemId =
+            typeof item.id === "number"
+              ? item.id
+              : item.id
+              ? Number(item.id)
+              : undefined;
+
+          return {
+            id: itemId,
+            name: item.name || "未登録商品",
+            category: item.category || "その他",
+            subcategory: item.subcategory || "",
+            quantity: item.quantity || 1,
+            unit_price: item.unit_price ? parseFloat(item.unit_price) || 0 : 0,
+            total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
+          };
+        }) ?? [],
     }));
   } finally {
     client.release();
@@ -584,5 +676,66 @@ export async function testDatabaseConnection(): Promise<boolean> {
       user: process.env.POSTGRES_USER || "receipt_user",
     });
     return false;
+  }
+}
+
+export async function getProcessingPrompt(): Promise<string> {
+  if (isBuildTime) {
+    return '';
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    await ensureProcessingSettingsTable(client);
+
+    const result = await client.query(
+      'SELECT additional_prompt FROM processing_settings ORDER BY id ASC LIMIT 1'
+    );
+
+    if (result.rowCount === 0) {
+      return '';
+    }
+
+    const row = (result.rows[0] ?? {}) as DbProcessingSettingsRow;
+    return row.additional_prompt ?? '';
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateProcessingPrompt(prompt: string): Promise<string> {
+  if (isBuildTime) {
+    return '';
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    await client.query('BEGIN');
+
+    await ensureProcessingSettingsTable(client);
+
+    const result = await client.query(
+      `
+        INSERT INTO processing_settings (id, additional_prompt, updated_at)
+        VALUES (1, $1, CURRENT_TIMESTAMP)
+        ON CONFLICT (id)
+        DO UPDATE SET additional_prompt = EXCLUDED.additional_prompt,
+                      updated_at = CURRENT_TIMESTAMP
+        RETURNING additional_prompt
+      `,
+      [prompt]
+    );
+
+    await client.query('COMMIT');
+
+    const row = (result.rows[0] ?? {}) as DbProcessingSettingsRow;
+    return row.additional_prompt ?? '';
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }

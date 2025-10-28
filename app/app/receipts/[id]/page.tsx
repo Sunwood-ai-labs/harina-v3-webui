@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, Download, MapPin, Phone, Store, Wallet } from 'lucide-react'
 import { getReceiptById } from '../../lib/database'
-import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
+import ReceiptItemsTable from './ReceiptItemsTable'
 
 interface ReceiptDetailPageProps {
   params: {
@@ -177,48 +177,7 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
             <h2 className="text-lg font-semibold text-sumi-900">購入商品</h2>
             <span className="text-sm text-sumi-500">{receipt.items?.length || 0} 件</span>
           </div>
-          <div className="overflow-hidden">
-            <table className="min-w-full divide-y divide-washi-200">
-              <thead className="bg-washi-100">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-sumi-500 uppercase tracking-wide">商品名</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-sumi-500 uppercase tracking-wide">カテゴリ</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">数量</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">単価</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">金額</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-washi-100">
-                {receipt.items && receipt.items.length > 0 ? (
-                  receipt.items.map((item, index) => {
-                    const categoryLabel = getCategoryLabel(item.category);
-                    const categoryClasses = getCategoryBadgeClasses(item.category);
-
-                    return (
-                      <tr key={`${item.name}-${index}`} className="hover:bg-washi-50">
-                        <td className="px-4 py-3 text-sm text-sumi-900 font-medium">{item.name}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${categoryClasses}`}>
-                            <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
-                            {categoryLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{item.quantity ?? 1}</td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.unit_price ?? 0)}</td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.total_price ?? 0)}</td>
-                      </tr>
-                    )
-                  })
-                ) : (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-sm text-sumi-500" colSpan={5}>
-                      商品データが登録されていません。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ReceiptItemsTable items={receipt.items ?? []} />
         </section>
       </div>
     </main>
