@@ -222,6 +222,7 @@ export default function Home() {
   const [showFabPop, setShowFabPop] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string>("");
   const [processingSteps, setProcessingSteps] = useState(1)
   const [isProcessing, setIsProcessing] = useState(false)
   const [processingMessage, setProcessingMessage] = useState("");
@@ -242,6 +243,17 @@ export default function Home() {
 
   // ▼▼▼ カテゴリ別支出データを保持するStateを追加 ▼▼▼
   const [categorySpending, setCategorySpending] = useState<{ [key: string]: number }>({});
+
+  useEffect(() => {
+    if (currentReceipt?.id) {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      if (origin) {
+        setShareUrl(`${origin}/receipts/${currentReceipt.id}`);
+        return;
+      }
+    }
+    setShareUrl("");
+  }, [currentReceipt?.id]);
 
   // データベースからレシートと統計情報を取得
   const fetchReceipts = async () => {
@@ -851,15 +863,55 @@ export default function Home() {
           <div className="sheet bg-white rounded-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
             <header className="flex items-center justify-between p-4 border-b">
               <strong className="text-lg font-bold">抽出結果を確認</strong>
-              <button
-                className="btn ghost border border-gray-200 text-gray-700 px-3 py-2 rounded"
-                onClick={() => setShowModal(false)}
-              >
-                閉じる
-              </button>
+              <div className="flex items-center gap-2">
+                {shareUrl && (
+                  <button
+                    className="btn ghost border border-teal-200 text-teal-600 px-3 py-2 rounded"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(shareUrl)
+                        toast.success('共有リンクをコピーしました')
+                      } catch (error) {
+                        console.error('Failed to copy receipt url:', error)
+                        if (typeof window !== 'undefined') {
+                          window.prompt('以下のURLをコピーしてください', shareUrl)
+                        }
+                        toast.info('クリップボードのアクセスに失敗したため、手動でコピーしてください')
+                      }
+                    }}
+                  >
+                    リンクをコピー
+                  </button>
+                )}
+                <button
+                  className="btn ghost border border-gray-200 text-gray-700 px-3 py-2 rounded"
+                  onClick={() => {
+                    setShowModal(false)
+                    setCurrentReceipt(null)
+                  }}
+                >
+                  閉じる
+                </button>
+              </div>
             </header>
 
             <div className="body p-4 space-y-6">
+              {shareUrl && (
+                <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-teal-700 mb-2 flex items-center gap-2">
+                    <span>🔗 共有リンク</span>
+                  </h3>
+                  <a
+                    href={shareUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-teal-600 underline break-all hover:text-teal-700"
+                  >
+                    {shareUrl}
+                  </a>
+                </div>
+              )}
+
               {/* レシート画像 */}
               {currentReceipt.image_path && (
                 <div className="bg-gradient-to-r from-sakura-50 to-indigo-50 p-4 rounded-lg border border-washi-200">

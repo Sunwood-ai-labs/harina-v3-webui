@@ -245,6 +245,62 @@ export async function getReceiptsFromDatabase(
   }
 }
 
+export async function getReceiptById(id: number): Promise<ReceiptData | null> {
+  if (isBuildTime) {
+    return null
+  }
+
+  const client = await connectWithRetry()
+
+  try {
+    const receiptResult = await client.query(
+      `SELECT * FROM receipts WHERE id = $1 LIMIT 1`,
+      [id]
+    )
+
+    if (receiptResult.rows.length === 0) {
+      return null
+    }
+
+    const receiptRow = receiptResult.rows[0] as DbReceiptRow
+
+    const itemsResult = await client.query(
+      `SELECT * FROM receipt_items WHERE receipt_id = $1 ORDER BY id`,
+      [receiptRow.id]
+    )
+
+    const items: ReceiptItem[] = itemsResult.rows.map((item: DbReceiptItemRow) => ({
+      name: item.name,
+      category: item.category,
+      subcategory: item.subcategory,
+      quantity: item.quantity,
+      unit_price: parseFloat(item.unit_price) || 0,
+      total_price: parseFloat(item.total_price) || 0
+    }))
+
+    return {
+      id: receiptRow.id,
+      filename: receiptRow.filename,
+      store_name: receiptRow.store_name,
+      store_address: receiptRow.store_address,
+      store_phone: receiptRow.store_phone,
+      transaction_date: receiptRow.transaction_date,
+      transaction_time: receiptRow.transaction_time,
+      receipt_number: receiptRow.receipt_number,
+      subtotal: parseFloat(receiptRow.subtotal) || 0,
+      tax: parseFloat(receiptRow.tax) || 0,
+      total_amount: parseFloat(receiptRow.total_amount) || 0,
+      payment_method: receiptRow.payment_method,
+      items,
+      processed_at: receiptRow.processed_at,
+      image_path: receiptRow.image_path,
+      uploader: receiptRow.uploader
+    }
+  } finally {
+    client.release()
+  }
+}
+
 // すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
 export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
   if (isBuildTime) {

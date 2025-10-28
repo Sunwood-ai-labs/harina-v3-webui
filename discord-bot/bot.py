@@ -16,6 +16,7 @@ if not DISCORD_TOKEN:
 RECEIPT_API_URL = os.getenv("RECEIPT_API_URL", "http://app:3000/api/process-receipt")
 DEFAULT_MODEL = os.getenv("RECEIPT_MODEL", "gemini")
 DEFAULT_UPLOADER = os.getenv("RECEIPT_UPLOADER", "discord")
+RECEIPT_BASE_URL = os.getenv("DISCORD_RECEIPT_BASE_URL", "").rstrip("/")
 ALLOWED_CHANNEL_IDS = {
     int(cid)
     for cid in os.getenv("DISCORD_ALLOWED_CHANNEL_IDS", "").split(",")
@@ -39,6 +40,21 @@ def parse_channel_uploaders(raw_mapping: str) -> Dict[str, str]:
 
 
 CHANNEL_UPLOADERS = parse_channel_uploaders(os.getenv("DISCORD_CHANNEL_UPLOADERS", ""))
+
+
+def build_receipt_url(receipt_id_value: Optional[object]) -> Optional[str]:
+    if not RECEIPT_BASE_URL:
+        return None
+
+    try:
+        receipt_id_int = int(receipt_id_value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+    if receipt_id_int <= 0:
+        return None
+
+    return f"{RECEIPT_BASE_URL}/receipts/{receipt_id_int}"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -68,6 +84,12 @@ def build_result_message(payload: dict) -> str:
                 lines.append(f"• {name}")
             else:
                 lines.append(f"• {name}: {price}")
+
+    receipt_url = build_receipt_url(payload.get("id"))
+    if receipt_url:
+        lines.append("---")
+        lines.append(f"🔗 {receipt_url}")
+
     return "\n".join(lines)
 
 

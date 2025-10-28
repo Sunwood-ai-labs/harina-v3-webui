@@ -95,3 +95,5 @@ docker-compose exec postgres psql -U receipt_user -d receipt_db
 
 - Discordメッセージに複数画像を添付した場合でも順次処理され、同一スレッドに結果が投稿され、完了後はスレッドが自動でクローズされます。
 - `DISCORD_CHANNEL_UPLOADERS` に `チャンネル名:アップローダー` を設定すると、保存時の `uploader` フィールドをチャンネル単位で切り替えられます。
+- `DISCORD_RECEIPT_BASE_URL` を設定しておくと、処理完了メッセージにレシート詳細ページの共有URLが表示されます。
+- `/receipts/{id}` ページで個別のレシート詳細を閲覧できます。

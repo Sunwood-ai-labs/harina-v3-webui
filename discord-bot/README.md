@@ -20,6 +20,7 @@
 | `RECEIPT_UPLOADER` | DBに保存する際のアップローダ名 | `discord` |
 | `DISCORD_MAX_FILE_MB` | 処理を許可する最大ファイルサイズ(MB) | `15` |
 | `DISCORD_CHANNEL_UPLOADERS` | `チャンネル名:アップローダー` のカンマ区切りマッピング | `v3_maki:maki,v3_yome:yome` |
+| `DISCORD_RECEIPT_BASE_URL` | レシート閲覧ページのベースURL | `https://localhost` |
 
 > **Note**: 画像解析APIへアクセスするため、`discord-bot` サービスは docker-compose の `receipt_network` に接続されています。
 
@@ -36,4 +37,6 @@ python bot.py
 
 `docker-compose` 経由では `discord-bot` サービスが自動的に起動します。
 
-> `DISCORD_CHANNEL_UPLOADERS` を設定すると、チャンネルごとにデータベースへ保存される `uploader` フィールドを上書きできます。指定がないチャンネルでは `RECEIPT_UPLOADER` の値が使われます。
+> `DISCORD_CHANNEL_UPLOADERS` を設定すると、チャンネルごとにデータベースへ保存される `uploader` フィールドを上書きできます。指定がないチャンネルでは `RECEIPT_UPLOADER` の値が使われます。また `DISCORD_RECEIPT_BASE_URL` を設定すると、スレッド内にレシート詳細ページへのリンクが表示されます。
+
+>`DISCORD_RECEIPT_BASE_URL` にはブラウザからアクセスできるホスト名（例: `https://localhost:4483` や `https://harina.example.com`）を指定してください。

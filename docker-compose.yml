@@ -95,6 +95,7 @@ services:
       - RECEIPT_UPLOADER=${DISCORD_RECEIPT_UPLOADER:-discord}
       - DISCORD_MAX_FILE_MB=${DISCORD_MAX_FILE_MB:-15}
       - DISCORD_CHANNEL_UPLOADERS=${DISCORD_CHANNEL_UPLOADERS:-}
+      - DISCORD_RECEIPT_BASE_URL=${DISCORD_RECEIPT_BASE_URL:-https://localhost}
     depends_on:
       app:
         condition: service_started
