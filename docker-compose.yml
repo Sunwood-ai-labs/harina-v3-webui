@@ -12,7 +12,7 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/migration_add_image_data.sql:/docker-entrypoint-initdb.d/02-migration.sql
     ports:
-      - "5433:5432"
+      - "5436:5432"
     networks:
       - receipt_network
     healthcheck:
@@ -53,7 +53,7 @@ services:
       - HARINA_API_URL=http://harina:8000
       - NEXT_PUBLIC_API_URL=http://localhost:3000
     ports:
-      - "3000:3000"
+      - "3010:3000"
     volumes:
       - ./app/public/uploads:/app/public/uploads
         
