@@ -508,7 +508,25 @@ export default function ReceiptsPage() {
 
       setProcessingSteps(3);
       setProcessingMessage("インポート完了！");
-      toast.success(`インポート成功: レシート${result.newReceipts}件 / 商品${result.newItems}件`);
+      const duplicateMessage =
+        result.duplicatesSkipped && result.duplicatesSkipped > 0
+          ? ` / 重複スキップ${result.duplicatesSkipped}件`
+          : "";
+
+      if (result.duplicatesSkipped && result.duplicatesSkipped > 0 && result.newReceipts === 0) {
+        toast.info(`すでに登録済みのレシートが${result.duplicatesSkipped}件あったよ`, {
+          position: "top-center",
+          autoClose: 4000,
+        });
+      } else {
+        toast.success(
+          `インポート成功: レシート${result.newReceipts}件 / 商品${result.newItems}件${duplicateMessage}`,
+          {
+            position: "top-center",
+            autoClose: 4000,
+          }
+        );
+      }
       fetchReceipts();
     } catch (error) {
       console.error(error);
