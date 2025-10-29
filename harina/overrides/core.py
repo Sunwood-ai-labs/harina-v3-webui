@@ -1,7 +1,8 @@
 """Harina v3 - Receipt OCR using Gemini API via LiteLLM (overridden)."""
 
+import os
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import litellm
 from loguru import logger
@@ -21,13 +22,15 @@ class HarinaCore:
 
     def __init__(
         self,
-        model_name: str = "gemini/gemini-1.5-flash",
+        model_name: str = "gemini/gemini-2.5-flash",
         template_path: Optional[str] = None,
         categories_path: Optional[str] = None
     ):
         self.model_name = model_name
         self.template_path = template_path
         self.categories_path = categories_path
+        self.last_used_fallback = False
+        self.last_used_key_label: Optional[str] = None
 
     def _load_xml_template(self) -> str:
         if self.template_path:
@@ -142,10 +145,7 @@ class HarinaCore:
             })
 
             logger.info("🤖 Preparing API request...")
-            response = litellm.completion(
-                model=self.model_name,
-                messages=messages
-            )
+            response = self._run_completion_with_fallback(messages)
 
             if not response.choices or not response.choices[0].message.content:
                 logger.error("❌ No response from API")
@@ -169,3 +169,63 @@ class HarinaCore:
         except Exception as exc:
             logger.error(f"❌ Failed to process receipt: {exc}")
             raise RuntimeError(f"Failed to process receipt: {exc}") from exc
+
+    def _gemini_key_candidates(self) -> List[tuple[str, Optional[str]]]:
+        if not self.model_name.lower().startswith("gemini"):
+            return [("other", None)]
+
+        candidates: List[tuple[str, Optional[str]]] = []
+        free_key = os.getenv("GEMINI_API_KEY_FREE")
+        main_key = os.getenv("GEMINI_API_KEY")
+
+        if free_key:
+            candidates.append(("free", free_key))
+        if main_key:
+            candidates.append(("primary", main_key))
+
+        if not candidates:
+            candidates.append(("primary", None))
+
+        return candidates
+
+    def _run_completion_with_fallback(self, messages):
+        self.last_used_fallback = False
+        self.last_used_key_label = None
+        candidates = self._gemini_key_candidates()
+        last_error: Optional[Exception] = None
+        fallback_used_any = False
+
+        for index, (label, candidate) in enumerate(candidates):
+            try:
+                kwargs = {"model": self.model_name, "messages": messages}
+                if candidate:
+                    kwargs["api_key"] = candidate
+                response = litellm.completion(**kwargs)
+                self.last_used_fallback = fallback_used_any
+                self.last_used_key_label = label
+                return response
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                error_message = str(exc).lower()
+                has_additional_candidate = len(candidates) > index + 1
+                should_retry = (
+                    label == "free"
+                    and has_additional_candidate
+                    and candidate is not None
+                    and "quota" in error_message
+                )
+
+                if should_retry:
+                    logger.warning("⚠️ GEMINI_API_KEY_FREE quota exhausted, retrying with GEMINI_API_KEY")
+                    fallback_used_any = True
+                    continue
+                raise
+
+        if last_error:
+            self.last_used_fallback = fallback_used_any
+            if not self.last_used_key_label and fallback_used_any:
+                self.last_used_key_label = "primary"
+            raise last_error
+        if self.last_used_key_label is None:
+            self.last_used_key_label = "primary" if self.model_name.lower().startswith("gemini") else "other"
+        raise RuntimeError("Failed to obtain completion response")
