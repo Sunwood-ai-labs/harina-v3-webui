@@ -25,4 +25,6 @@ export interface ReceiptData {
   items?: ReceiptItem[]
   processed_at?: string
   image_path?: string
+  duplicate?: boolean
+  duplicateOf?: number
 }
