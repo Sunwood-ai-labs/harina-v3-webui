@@ -385,9 +385,13 @@ export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptU
                   )}
                   
                   {fileStatus.status === 'completed' && (
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex flex-col items-end gap-1 text-right">
                       <span className={`text-sm font-medium ${fileStatus.result?.duplicate ? 'text-amber-600' : 'text-green-600'}`}>
                         {fileStatus.result?.duplicate ? '既存レシート' : '完了'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-sumi-500">
+                        <Sparkles size={12} className="text-indigo-500" />
+                        {fileStatus.result?.model_used || 'gemini/gemini-2.5-flash'}
                       </span>
                       {fileStatus.result?.duplicate && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
