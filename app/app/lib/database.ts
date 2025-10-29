@@ -2,6 +2,8 @@ import { Pool, PoolClient } from "pg";
 import { ReceiptData, ReceiptItem } from "../types";
 
 // データベースから取得するレシートの型定義
+const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
+
 interface DbReceiptRow {
   id: number;
   filename: string;
@@ -18,6 +20,7 @@ interface DbReceiptRow {
   processed_at: string;
   image_path: string;
   uploader: string; // 👈 この行を追加
+  model_used: string | null;
 }
 
 // データベースから取得するアイテムの型定義
@@ -74,6 +77,7 @@ interface DbDuplicateGroupRow {
     uploader: string | null;
     processed_at: string | null;
     image_path: string | null;
+    model_used: string | null;
   }>;
 }
 
@@ -130,6 +134,7 @@ export interface DuplicateGroup {
     uploader: string | null;
     processed_at: string | null;
     image_path: string | null;
+    model_used: string | null;
   }>;
 }
 
@@ -180,9 +185,9 @@ export async function saveReceiptToDatabase(
         filename, store_name, store_address, store_phone,
         transaction_date, transaction_time, receipt_number,
         subtotal, tax, total_amount, payment_method, processed_at,
-        image_path, uploader
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING id`, // 👆 uploader を追加し、VALUES を $14 までに
+        image_path, uploader, model_used
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING id`,
       [
         receipt.filename,
         receipt.store_name,
@@ -197,7 +202,8 @@ export async function saveReceiptToDatabase(
         receipt.payment_method,
         receipt.processed_at || new Date().toISOString(),
         receipt.image_path,
-        receipt.uploader, // 👈 パラメータに receipt.uploader を追加
+        receipt.uploader,
+        receipt.model_used || DEFAULT_MODEL,
       ]
     );
 
@@ -329,6 +335,7 @@ export async function getReceiptsFromDatabase(
         processed_at: receiptRow.processed_at,
         image_path: receiptRow.image_path,
         uploader: receiptRow.uploader, // 👈 この行を追加
+        model_used: receiptRow.model_used || DEFAULT_MODEL,
       });
     }
 
@@ -388,7 +395,8 @@ export async function getReceiptById(id: number): Promise<ReceiptData | null> {
       items,
       processed_at: receiptRow.processed_at,
       image_path: receiptRow.image_path,
-      uploader: receiptRow.uploader
+      uploader: receiptRow.uploader,
+      model_used: receiptRow.model_used || DEFAULT_MODEL,
     }
   } finally {
     client.release()
@@ -588,6 +596,7 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
       processed_at: row.processed_at,
       image_path: row.image_path,
       uploader: row.uploader,
+      model_used: row.model_used || DEFAULT_MODEL,
       items:
         row.items?.map((item) => {
           const itemId =
@@ -636,7 +645,8 @@ export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
              'total_amount', total_amount,
              'uploader', uploader,
              'processed_at', processed_at,
-             'image_path', image_path
+             'image_path', image_path,
+             'model_used', COALESCE(model_used, $1)
            )
            ORDER BY processed_at DESC NULLS LAST
          ) AS receipts
@@ -644,7 +654,8 @@ export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
        WHERE total_amount IS NOT NULL
        GROUP BY transaction_date, store_name, total_amount
        HAVING COUNT(*) > 1
-       ORDER BY COUNT(*) DESC, MAX(processed_at) DESC`
+       ORDER BY COUNT(*) DESC, MAX(processed_at) DESC`,
+      [DEFAULT_MODEL]
     );
 
     return (result.rows as DbDuplicateGroupRow[]).map((row) => ({
@@ -654,6 +665,7 @@ export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
       receipts: row.receipts.map((receipt) => ({
         ...receipt,
         total_amount: receipt.total_amount ? parseFloat(receipt.total_amount) : null,
+        model_used: receipt.model_used || DEFAULT_MODEL,
       })),
     }));
   } finally {
@@ -774,8 +786,8 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
         const receiptResult = await client.query(
           `INSERT INTO receipts (
             filename, store_name, transaction_date, transaction_time,
-            total_amount, payment_method, uploader, processed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            total_amount, payment_method, uploader, processed_at, model_used
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING id`,
           [
             filename,
@@ -785,7 +797,8 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
             totalAmount,
             firstItem.支払方法,
             firstItem.アップローダー,
-            new Date().toISOString()
+            new Date().toISOString(),
+            DEFAULT_MODEL,
           ]
         );
         receiptId = receiptResult.rows[0].id;
