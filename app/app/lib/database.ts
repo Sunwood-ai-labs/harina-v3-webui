@@ -60,6 +60,23 @@ interface DbReceiptWithItemsRow extends DbReceiptRow {
   }> | null;
 }
 
+interface DbDuplicateGroupRow {
+  transaction_date: string | null;
+  store_name: string | null;
+  total_amount: string | null;
+  receipts: Array<{
+    id: number;
+    filename: string | null;
+    store_name: string | null;
+    transaction_date: string | null;
+    transaction_time: string | null;
+    total_amount: string | null;
+    uploader: string | null;
+    processed_at: string | null;
+    image_path: string | null;
+  }>;
+}
+
 interface DbProcessingSettingsRow {
   additional_prompt: string;
 }
@@ -96,6 +113,24 @@ const pool = new Pool({
 export interface SaveReceiptResult {
   id: number;
   wasDuplicate: boolean;
+  duplicateOf?: number | null;
+}
+
+export interface DuplicateGroup {
+  transactionDate: string | null;
+  storeName: string | null;
+  totalAmount: number;
+  receipts: Array<{
+    id: number;
+    filename: string | null;
+    store_name: string | null;
+    transaction_date: string | null;
+    transaction_time: string | null;
+    total_amount: number | null;
+    uploader: string | null;
+    processed_at: string | null;
+    image_path: string | null;
+  }>;
 }
 
 async function findDuplicateReceiptId(
@@ -138,11 +173,6 @@ export async function saveReceiptToDatabase(
       receipt.transaction_date,
       receipt.total_amount ?? null
     );
-
-    if (duplicateId) {
-      await client.query("ROLLBACK");
-      return { id: duplicateId, wasDuplicate: true };
-    }
 
     // レシート基本情報を保存
     const receiptResult = await client.query(
@@ -195,7 +225,11 @@ export async function saveReceiptToDatabase(
     }
 
     await client.query("COMMIT");
-    return { id: receiptId, wasDuplicate: false };
+    return {
+      id: receiptId,
+      wasDuplicate: duplicateId !== null,
+      duplicateOf: duplicateId ?? null,
+    };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -573,6 +607,54 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
             total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
           };
         }) ?? [],
+    }));
+  } finally {
+    client.release();
+  }
+}
+
+export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
+  if (isBuildTime) {
+    return [];
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    const result = await client.query(
+      `SELECT
+         transaction_date,
+         store_name,
+         total_amount,
+         json_agg(
+           json_build_object(
+             'id', id,
+             'filename', filename,
+             'store_name', store_name,
+             'transaction_date', transaction_date,
+             'transaction_time', transaction_time,
+             'total_amount', total_amount,
+             'uploader', uploader,
+             'processed_at', processed_at,
+             'image_path', image_path
+           )
+           ORDER BY processed_at DESC NULLS LAST
+         ) AS receipts
+       FROM receipts
+       WHERE total_amount IS NOT NULL
+       GROUP BY transaction_date, store_name, total_amount
+       HAVING COUNT(*) > 1
+       ORDER BY COUNT(*) DESC, MAX(processed_at) DESC`
+    );
+
+    return (result.rows as DbDuplicateGroupRow[]).map((row) => ({
+      transactionDate: row.transaction_date,
+      storeName: row.store_name,
+      totalAmount: row.total_amount ? parseFloat(row.total_amount) : 0,
+      receipts: row.receipts.map((receipt) => ({
+        ...receipt,
+        total_amount: receipt.total_amount ? parseFloat(receipt.total_amount) : null,
+      })),
     }));
   } finally {
     client.release();

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ReceiptData } from '../../types'
-import { saveReceiptToDatabase, getProcessingPrompt, getReceiptById } from '../../lib/database'
+import { saveReceiptToDatabase, getProcessingPrompt } from '../../lib/database'
 import { parseString } from 'xml2js'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -255,25 +255,13 @@ export async function POST(request: NextRequest) {
       const saveResult = await saveReceiptToDatabase(receiptData)
       receiptData.id = saveResult.id
 
-      if (saveResult.wasDuplicate) {
-        const existingReceipt = await getReceiptById(saveResult.id)
-        if (existingReceipt) {
-          return NextResponse.json({
-            ...existingReceipt,
-            duplicate: true,
-            duplicateOf: saveResult.id,
-            fallbackUsed,
-            keyType: keyType ?? existingReceipt.keyType,
-          })
-        }
-        return NextResponse.json({
-          ...receiptData,
-          duplicate: true,
-          duplicateOf: saveResult.id,
-          fallbackUsed,
-          keyType: keyType ?? receiptData.keyType,
-        })
-      }
+      return NextResponse.json({
+        ...receiptData,
+        duplicate: saveResult.wasDuplicate,
+        duplicateOf: saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined,
+        fallbackUsed,
+        keyType: keyType ?? receiptData.keyType,
+      })
     } catch (dbError) {
       console.error('Database save error:', dbError)
       // データベース保存に失敗してもレスポンスは返す
@@ -338,25 +326,18 @@ export async function POST(request: NextRequest) {
       try {
         const saveResult = await saveReceiptToDatabase(dummyReceiptData)
         dummyReceiptData.id = saveResult.id
-        if (saveResult.wasDuplicate) {
-          const existingReceipt = await getReceiptById(saveResult.id)
-          if (existingReceipt) {
-            return NextResponse.json({
-              ...existingReceipt,
-              duplicate: true,
-              duplicateOf: saveResult.id,
-              fallbackUsed: false,
-              keyType: 'primary',
-            })
-          }
-          dummyReceiptData.duplicate = true
-          dummyReceiptData.duplicateOf = saveResult.id
-          return NextResponse.json(dummyReceiptData)
-        }
+        dummyReceiptData.duplicate = saveResult.wasDuplicate
+        dummyReceiptData.duplicateOf = saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined
+        return NextResponse.json({
+          ...dummyReceiptData,
+          duplicate: dummyReceiptData.duplicate ?? false,
+          fallbackUsed: false,
+          keyType: 'primary',
+        })
       } catch (dbError) {
         console.error('Database save error:', dbError)
       }
-      
+
       return NextResponse.json({
         ...dummyReceiptData,
         duplicate: false,

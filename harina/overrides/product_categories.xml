@@ -74,6 +74,13 @@
         <subcategory>駐車場</subcategory>
         <subcategory>その他</subcategory>
     </category>
+    <category name="レジャー・お出かけ">
+        <subcategory>レジャー施設</subcategory>
+        <subcategory>テーマパーク</subcategory>
+        <subcategory>アウトドア・キャンプ</subcategory>
+        <subcategory>スポーツ・アクティビティ</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
     <category name="開発・個人プロジェクト">
         <subcategory>ソフトウェア・サービス利用料</subcategory>
         <subcategory>ハードウェア・機材</subcategory>

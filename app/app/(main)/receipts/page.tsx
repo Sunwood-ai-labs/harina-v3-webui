@@ -688,6 +688,21 @@ export default function ReceiptsPage() {
                 value={filters.searchTerm}
                 onChange={(event) => handleFilterChange("searchTerm", event.target.value)}
               />
+              {storeOptions.length > 0 && (
+                <select
+                  value={filters.store}
+                  onChange={(event) => handleFilterChange("store", event.target.value)}
+                  className="hidden md:block rounded-lg border border-washi-300 bg-white px-2 py-1 text-xs font-semibold text-sumi-600 hover:border-teal-300 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  aria-label="店舗でフィルター"
+                >
+                  <option value="">全店舗</option>
+                  {storeOptions.map((store) => (
+                    <option key={`quick-store-${store}`} value={store}>
+                      {store}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div className="hidden sm:flex gap-2 text-xs text-sumi-500">
                 <span className="px-2 py-1 rounded-full bg-washi-200">カテゴリ</span>
                 <span className="px-2 py-1 rounded-full bg-washi-200">店舗</span>

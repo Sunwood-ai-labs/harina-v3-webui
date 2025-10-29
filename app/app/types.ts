@@ -26,7 +26,7 @@ export interface ReceiptData {
   processed_at?: string
   image_path?: string
   duplicate?: boolean
-  duplicateOf?: number
+  duplicateOf?: number | null
   fallbackUsed?: boolean
   keyType?: string
 }
