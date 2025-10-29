@@ -52,6 +52,7 @@ const DEFAULT_FILTERS: FiltersState = {
 };
 
 const FILTER_STORAGE_KEY = "harina.receipts.filters.v1";
+const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
 
 const filtersAreActive = (filters: FiltersState) =>
   Boolean(
@@ -129,6 +130,7 @@ export default function ReceiptsPage() {
   const [listBulkCategory, setListBulkCategory] = useState("");
   const [listBulkSubcategory, setListBulkSubcategory] = useState("");
   const [isListBulkSaving, setIsListBulkSaving] = useState(false);
+  const resolveModel = (receipt: ReceiptData) => receipt.model_used || DEFAULT_MODEL;
   useEffect(() => {
     const stored = readStoredFilters();
     setFilters(stored);
@@ -1012,6 +1014,7 @@ export default function ReceiptsPage() {
                   <th className="px-3">日付</th>
                   <th className="px-3">店舗</th>
                   <th className="px-3">アップロード者</th>
+                  <th className="px-3">モデル</th>
                   <th className="px-3">カテゴリ</th>
                   <th className="px-3 text-right">金額</th>
                   <th className="px-3">状態</th>
@@ -1020,13 +1023,13 @@ export default function ReceiptsPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
+                    <td colSpan={selectionMode ? 8 : 7} className="px-3 py-10 text-center text-sumi-500">
                       データを読み込み中...
                     </td>
                   </tr>
                 ) : filteredReceipts.length === 0 ? (
                   <tr>
-                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
+                    <td colSpan={selectionMode ? 8 : 7} className="px-3 py-10 text-center text-sumi-500">
                       条件に一致するレシートがありません。フィルターを調整してください。
                     </td>
                   </tr>
@@ -1074,6 +1077,11 @@ export default function ReceiptsPage() {
                           <span className="inline-flex items-center gap-1">
                             {receipt.uploader === "夫" ? "🤵" : "👰"}
                             <span>{receipt.uploader || "夫"}</span>
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-sumi-600">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-washi-200 px-3 py-1 text-xs font-medium text-sumi-600">
+                            {resolveModel(receipt)}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-sm text-sumi-600">
@@ -1135,11 +1143,11 @@ export default function ReceiptsPage() {
                   }
                 };
 
-                return (
-                  <article
-                    key={receipt.id}
-                    className={`bg-white border rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4 ${
-                      isChecked ? "border-teal-300 ring-2 ring-teal-200" : "border-washi-300"
+            return (
+              <article
+                key={receipt.id}
+                className={`bg-white border rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4 ${
+                  isChecked ? "border-teal-300 ring-2 ring-teal-200" : "border-washi-300"
                     }`}
                     onClick={handleCardClick}
                   >
@@ -1191,6 +1199,9 @@ export default function ReceiptsPage() {
                     <div className="flex items-center gap-2 text-xs text-sumi-500">
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-washi-200 text-sumi-600">
                         {receipt.uploader || "夫"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-washi-200 text-sumi-600">
+                        {resolveModel(receipt)}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${categoryClasses}`}>
                         <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
