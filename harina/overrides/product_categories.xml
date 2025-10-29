@@ -13,6 +13,13 @@
         <subcategory>アルコール</subcategory>
         <subcategory>その他</subcategory>
     </category>
+    <category name="外食">
+        <subcategory>レストラン</subcategory>
+        <subcategory>カフェ</subcategory>
+        <subcategory>ファストフード</subcategory>
+        <subcategory>テイクアウト・デリバリー</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
     <category name="日用品・雑貨">
         <subcategory>洗剤・清掃用品</subcategory>
         <subcategory>トイレットペーパー・ティッシュ</subcategory>
