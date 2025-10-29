@@ -22,6 +22,7 @@ type DuplicateReceiptSummary = {
   uploader: string | null;
   processed_at: string | null;
   image_path: string | null;
+  model_used: string | null;
 };
 
 type DuplicateGroup = {
@@ -41,6 +42,9 @@ export default function DuplicatesPage() {
     () => groups.reduce((acc, group) => acc + group.receipts.length, 0),
     [groups]
   );
+
+  const formatModel = (model?: string | null) =>
+    model?.trim() || "gemini/gemini-2.5-flash";
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
 
@@ -275,8 +279,12 @@ export default function DuplicatesPage() {
                                 {receipt.transaction_time ? `取引時刻: ${receipt.transaction_time}` : ""}
                               </p>
                             </td>
-                            <td className="px-4 py-3 text-xs text-sumi-500">
-                              {receipt.filename || receipt.image_path || "—"}
+                            <td className="px-4 py-3 text-xs text-sumi-500 space-y-1">
+                              <div>{receipt.filename || receipt.image_path || "—"}</div>
+                              <div className="inline-flex items-center gap-1 rounded-lg bg-washi-200 px-2 py-1 text-[11px] font-semibold text-sumi-600">
+                                <AlertCircle size={11} className="text-teal-600" />
+                                {formatModel(receipt.model_used)}
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-sm">
                               <Link
