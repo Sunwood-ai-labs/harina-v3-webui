@@ -22,6 +22,7 @@ export interface ReceiptData {
   total_amount?: number
   payment_method?: string
   uploader?: string
+  model_used?: string
   items?: ReceiptItem[]
   processed_at?: string
   image_path?: string

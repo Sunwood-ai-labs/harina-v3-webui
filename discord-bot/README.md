@@ -16,7 +16,7 @@
 | `DISCORD_BOT_TOKEN` | Discord Bot Token | `your-token` |
 | `DISCORD_ALLOWED_CHANNEL_IDS` | ボットを反応させるチャンネルID（カンマ区切り、省略可） | `123456789012345678,987654321098765432` |
 | `RECEIPT_API_URL` | レシート処理APIのURL | `http://app:3000/api/process-receipt` |
-| `RECEIPT_MODEL` | 使用するモデル名 | `gemini` |
+| `RECEIPT_MODEL` | 使用するモデル名 | `gemini/gemini-2.5-flash` |
 | `RECEIPT_UPLOADER` | DBに保存する際のアップローダ名 | `discord` |
 | `DISCORD_MAX_FILE_MB` | 処理を許可する最大ファイルサイズ(MB) | `15` |
 | `DISCORD_CHANNEL_UPLOADERS` | `チャンネル名:アップローダー` のカンマ区切りマッピング | `v3_maki:maki,v3_yome:yome` |

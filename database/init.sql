@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS receipts (
     payment_method VARCHAR(50),
     uploader VARCHAR(50) DEFAULT '夫',
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    image_path VARCHAR(500)
+    image_path VARCHAR(500),
+    model_used VARCHAR(100) DEFAULT 'gemini/gemini-2.5-flash'
 );
 
 -- Create receipt_items table
