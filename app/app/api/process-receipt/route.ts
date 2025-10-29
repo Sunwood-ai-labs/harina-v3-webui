@@ -115,11 +115,13 @@ export async function POST(request: NextRequest) {
   let file: File | null = null
   let imagePath: string | undefined = undefined
   let fallbackUsed = false
+  const DEFAULT_MODEL = 'gemini/gemini-2.5-flash'
+  let model: string = DEFAULT_MODEL
   
   try {
     const formData = await request.formData()
     file = formData.get('file') as File
-    const model = formData.get('model') as string || 'gemini'
+    model = (formData.get('model') as string) || DEFAULT_MODEL
     const uploader = formData.get('uploader') as string || '夫' // 👈 この行を追加
 
     let additionalPrompt = ''
@@ -210,6 +212,7 @@ export async function POST(request: NextRequest) {
       receiptData = await parseXmlToReceiptData(xmlData, file.name, imagePath)
       receiptData.uploader = uploader; // 👈 パースしたデータにuploaderを追加
       receiptData.fallbackUsed = fallbackUsed
+      receiptData.model_used = model
       receiptData.keyType = keyType
       console.log('Parsed receipt data:', receiptData)
     } catch (xmlError) {
@@ -221,6 +224,7 @@ export async function POST(request: NextRequest) {
         receiptData = parseXmlWithRegex(xmlData, file.name, imagePath)
         receiptData.uploader = uploader; // 👈 こちらにも追加
         receiptData.fallbackUsed = fallbackUsed
+        receiptData.model_used = model
         receiptData.keyType = keyType
         console.log('Regex-parsed receipt data:', receiptData)
       } catch (regexError) {
@@ -259,8 +263,9 @@ export async function POST(request: NextRequest) {
         ...receiptData,
         duplicate: saveResult.wasDuplicate,
         duplicateOf: saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined,
-        fallbackUsed,
-        keyType: keyType ?? receiptData.keyType,
+          fallbackUsed,
+          model_used: model,
+          keyType: keyType ?? receiptData.keyType,
       })
     } catch (dbError) {
       console.error('Database save error:', dbError)
@@ -271,6 +276,7 @@ export async function POST(request: NextRequest) {
       ...receiptData,
       duplicate: false,
       fallbackUsed,
+      model_used: model,
       keyType: keyType ?? receiptData.keyType,
     })
   } catch (error) {
@@ -319,6 +325,7 @@ export async function POST(request: NextRequest) {
         image_path: imagePath || undefined,
         uploader: '夫', // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
         fallbackUsed: false,
+        model_used: model,
         keyType: 'primary',
       }
       
@@ -328,10 +335,12 @@ export async function POST(request: NextRequest) {
         dummyReceiptData.id = saveResult.id
         dummyReceiptData.duplicate = saveResult.wasDuplicate
         dummyReceiptData.duplicateOf = saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined
+        dummyReceiptData.model_used = model
         return NextResponse.json({
           ...dummyReceiptData,
           duplicate: dummyReceiptData.duplicate ?? false,
           fallbackUsed: false,
+          model_used: model,
           keyType: 'primary',
         })
       } catch (dbError) {
@@ -342,6 +351,7 @@ export async function POST(request: NextRequest) {
         ...dummyReceiptData,
         duplicate: false,
         fallbackUsed: false,
+        model_used: model,
         keyType: 'primary',
       })
     }
