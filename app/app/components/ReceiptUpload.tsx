@@ -107,20 +107,34 @@ export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptU
             result 
           } : item
         ))
+
+        files[i] = {
+          ...fileStatus,
+          status: 'completed',
+          result,
+        }
         
         onReceiptProcessed?.(result)
         
       } catch (error) {
         console.error(`Error processing file ${fileStatus.file.name}:`, error)
         
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
         // エラー時の処理
         setFileQueue(prev => prev.map((item, idx) => 
           idx === i ? { 
             ...item, 
             status: 'error' as const, 
-            error: error instanceof Error ? error.message : 'Unknown error'
+            error: errorMessage
           } : item
         ))
+
+        files[i] = {
+          ...fileStatus,
+          status: 'error',
+          error: errorMessage,
+        }
       }
     }
     
@@ -130,14 +144,28 @@ export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptU
     // 処理完了の通知
     const completedCount = files.filter(f => f.status === 'completed').length
     const errorCount = files.filter(f => f.status === 'error').length
+    const duplicateCount = files.filter(f => f.result?.duplicate).length
+    const createdCount = completedCount - duplicateCount
     
     if (errorCount === 0) {
-      toast.success(`${completedCount}件のレシートを正常に処理しました！`, {
-        position: "top-center",
-        autoClose: 4000,
-      })
+      if (completedCount === 0 && duplicateCount > 0) {
+        toast.info(`${duplicateCount}件は既存のレシートとしてスキップしたよ📝`, {
+          position: "top-center",
+          autoClose: 4000,
+        })
+      } else if (duplicateCount > 0) {
+        toast.success(`${createdCount}件を追加、${duplicateCount}件は既存レシートを再利用したよ✨`, {
+          position: "top-center",
+          autoClose: 4000,
+        })
+      } else {
+        toast.success(`${completedCount}件のレシートを正常に処理しました！`, {
+          position: "top-center",
+          autoClose: 4000,
+        })
+      }
     } else {
-      toast.warning(`${completedCount}件成功、${errorCount}件エラーがありました`, {
+      toast.warning(`${createdCount}件追加、${duplicateCount}件重複、${errorCount}件エラーがあったよ`, {
         position: "top-center",
         autoClose: 5000,
       })
@@ -312,10 +340,15 @@ export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptU
               <div
                 key={`${fileStatus.file.name}-${index}`}
                 className={`flex items-center justify-between p-4 rounded-lg border ${
-                  fileStatus.status === 'completed' ? 'bg-green-50 border-green-200' :
-                  fileStatus.status === 'error' ? 'bg-red-50 border-red-200' :
-                  fileStatus.status === 'processing' ? 'bg-blue-50 border-blue-200' :
-                  'bg-gray-50 border-gray-200'
+                  fileStatus.status === 'completed' && fileStatus.result?.duplicate
+                    ? 'bg-amber-50 border-amber-200'
+                    : fileStatus.status === 'completed'
+                    ? 'bg-green-50 border-green-200'
+                    : fileStatus.status === 'error'
+                    ? 'bg-red-50 border-red-200'
+                    : fileStatus.status === 'processing'
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-gray-50 border-gray-200'
                 }`}
               >
                 <div className="flex items-center space-x-3">
@@ -352,7 +385,17 @@ export default function ReceiptUpload({ onReceiptProcessed, onUpload }: ReceiptU
                   )}
                   
                   {fileStatus.status === 'completed' && (
-                    <div className="text-sm font-medium text-green-600">完了</div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`text-sm font-medium ${fileStatus.result?.duplicate ? 'text-amber-600' : 'text-green-600'}`}>
+                        {fileStatus.result?.duplicate ? '既存レシート' : '完了'}
+                      </span>
+                      {fileStatus.result?.duplicate && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600">
+                          <Sparkles size={14} />
+                          重複をスキップ
+                        </span>
+                      )}
+                    </div>
                   )}
                   
                   {fileStatus.status === 'error' && (
