@@ -13,8 +13,10 @@ DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 if not DISCORD_TOKEN:
     raise RuntimeError("環境変数 DISCORD_BOT_TOKEN が設定されていません。")
 
+DEFAULT_MODEL = "gemini/gemini-2.5-flash"
+
 RECEIPT_API_URL = os.getenv("RECEIPT_API_URL", "http://app:3000/api/process-receipt")
-DEFAULT_MODEL = os.getenv("RECEIPT_MODEL", "gemini")
+DEFAULT_MODEL = os.getenv("RECEIPT_MODEL", "gemini/gemini-2.5-flash")
 DEFAULT_UPLOADER = os.getenv("RECEIPT_UPLOADER", "discord")
 RECEIPT_BASE_URL = os.getenv("DISCORD_RECEIPT_BASE_URL", "").rstrip("/")
 ALLOWED_CHANNEL_IDS = {
@@ -72,6 +74,14 @@ def build_result_message(payload: dict) -> str:
     total = payload.get("total_amount")
     if total is not None:
         lines.append(f"合計金額: {total}")
+
+    model_used = (
+        payload.get("model_used")
+        or payload.get("modelUsed")
+        or payload.get("model")
+        or DEFAULT_MODEL
+    )
+    lines.append(f"モデル: {model_used}")
 
     fallback_used = payload.get("fallbackUsed")
     key_type = payload.get("keyType")
