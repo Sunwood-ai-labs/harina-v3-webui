@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<product_categories>
+    <category name="食品・飲料">
+        <subcategory>肉類</subcategory>
+        <subcategory>魚介類</subcategory>
+        <subcategory>野菜・果物</subcategory>
+        <subcategory>乳製品</subcategory>
+        <subcategory>パン・米・麺類</subcategory>
+        <subcategory>調味料・スパイス</subcategory>
+        <subcategory>冷凍食品</subcategory>
+        <subcategory>お菓子・デザート</subcategory>
+        <subcategory>飲み物</subcategory>
+        <subcategory>アルコール</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="外食">
+        <subcategory>レストラン</subcategory>
+        <subcategory>カフェ</subcategory>
+        <subcategory>ファストフード</subcategory>
+        <subcategory>テイクアウト・デリバリー</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="日用品・雑貨">
+        <subcategory>洗剤・清掃用品</subcategory>
+        <subcategory>トイレットペーパー・ティッシュ</subcategory>
+        <subcategory>バス・ボディケア</subcategory>
+        <subcategory>オーラルケア</subcategory>
+        <subcategory>化粧品・スキンケア</subcategory>
+        <subcategory>文房具</subcategory>
+        <subcategory>キッチン用品</subcategory>
+        <subcategory>雑貨・小物</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="医薬品・健康">
+        <subcategory>医薬品</subcategory>
+        <subcategory>サプリメント</subcategory>
+        <subcategory>医療用品</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="衣類・ファッション">
+        <subcategory>衣類</subcategory>
+        <subcategory>靴・靴下</subcategory>
+        <subcategory>アクセサリー</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="家電・電子機器">
+        <subcategory>家電製品</subcategory>
+        <subcategory>電子機器</subcategory>
+        <subcategory>電池・充電器</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="書籍・メディア">
+        <subcategory>書籍・雑誌</subcategory>
+        <subcategory>CD・DVD</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="光熱費">
+        <subcategory>ガス料金</subcategory>
+        <subcategory>電気料金</subcategory>
+        <subcategory>水道料金</subcategory>
+        <subcategory>その他光熱費</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="通信・サービス">
+        <subcategory>インターネット</subcategory>
+        <subcategory>電話・携帯</subcategory>
+        <subcategory>サブスクリプション</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="交通">
+        <subcategory>公共交通機関</subcategory>
+        <subcategory>タクシー・ライドシェア</subcategory>
+        <subcategory>ガソリン</subcategory>
+        <subcategory>駐車場</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="レジャー・お出かけ">
+        <subcategory>レジャー施設</subcategory>
+        <subcategory>テーマパーク</subcategory>
+        <subcategory>アウトドア・キャンプ</subcategory>
+        <subcategory>スポーツ・アクティビティ</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="開発・個人プロジェクト">
+        <subcategory>ソフトウェア・サービス利用料</subcategory>
+        <subcategory>ハードウェア・機材</subcategory>
+        <subcategory>ケーブル・アクセサリ</subcategory>
+        <subcategory>外注・委託費</subcategory>
+        <subcategory>学習・イベント参加費</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="割引">
+        <subcategory>値引き</subcategory>
+        <subcategory>クーポン</subcategory>
+        <subcategory>ポイント利用</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+    <category name="その他">
+        <subcategory>ギフト・プレゼント</subcategory>
+        <subcategory>ペット用品</subcategory>
+        <subcategory>園芸用品</subcategory>
+        <subcategory>その他</subcategory>
+    </category>
+</product_categories>

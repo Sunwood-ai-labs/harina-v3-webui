@@ -1,4 +1,5 @@
 export interface ReceiptItem {
+  id?: number
   name: string
   category?: string
   subcategory?: string
@@ -21,7 +22,12 @@ export interface ReceiptData {
   total_amount?: number
   payment_method?: string
   uploader?: string
+  model_used?: string
   items?: ReceiptItem[]
   processed_at?: string
   image_path?: string
+  duplicate?: boolean
+  duplicateOf?: number | null
+  fallbackUsed?: boolean
+  keyType?: string
 }

@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ChevronLeft, Download, MapPin, Phone, Store, Wallet } from 'lucide-react'
 import { getReceiptById } from '../../lib/database'
-import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
+import ReceiptItemsTable from './ReceiptItemsTable'
 
 interface ReceiptDetailPageProps {
   params: {
@@ -57,12 +57,15 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 text-sm text-sumi-500 mb-2">
+            <div className="inline-flex flex-wrap items-center gap-2 text-sm text-sumi-500 mb-2">
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-washi-200 text-sumi-700 border border-washi-300">
                 ID: {receipt.id}
               </span>
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
                 {receipt.uploader || 'アップローダー不明'}
+              </span>
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                {receipt.model_used || 'gemini/gemini-2.5-flash'}
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold text-sumi-900 tracking-tight">
@@ -114,6 +117,10 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
               <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
                 <dt className="text-sumi-500 text-xs uppercase tracking-wide">レシート番号</dt>
                 <dd className="mt-1 text-sumi-900 font-medium">{receipt.receipt_number || '未設定'}</dd>
+              </div>
+              <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
+                <dt className="text-sumi-500 text-xs uppercase tracking-wide">使用モデル</dt>
+                <dd className="mt-1 text-sumi-900 font-medium">{receipt.model_used || 'gemini/gemini-2.5-flash'}</dd>
               </div>
               <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
                 <dt className="text-sumi-500 text-xs uppercase tracking-wide">店舗住所</dt>
@@ -177,48 +184,7 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
             <h2 className="text-lg font-semibold text-sumi-900">購入商品</h2>
             <span className="text-sm text-sumi-500">{receipt.items?.length || 0} 件</span>
           </div>
-          <div className="overflow-hidden">
-            <table className="min-w-full divide-y divide-washi-200">
-              <thead className="bg-washi-100">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-sumi-500 uppercase tracking-wide">商品名</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-sumi-500 uppercase tracking-wide">カテゴリ</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">数量</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">単価</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-sumi-500 uppercase tracking-wide">金額</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-washi-100">
-                {receipt.items && receipt.items.length > 0 ? (
-                  receipt.items.map((item, index) => {
-                    const categoryLabel = getCategoryLabel(item.category);
-                    const categoryClasses = getCategoryBadgeClasses(item.category);
-
-                    return (
-                      <tr key={`${item.name}-${index}`} className="hover:bg-washi-50">
-                        <td className="px-4 py-3 text-sm text-sumi-900 font-medium">{item.name}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${categoryClasses}`}>
-                            <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
-                            {categoryLabel}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{item.quantity ?? 1}</td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.unit_price ?? 0)}</td>
-                        <td className="px-4 py-3 text-sm text-sumi-900 text-right">{totalFormatter.format(item.total_price ?? 0)}</td>
-                      </tr>
-                    )
-                  })
-                ) : (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-sm text-sumi-500" colSpan={5}>
-                      商品データが登録されていません。
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ReceiptItemsTable items={receipt.items ?? []} />
         </section>
       </div>
     </main>

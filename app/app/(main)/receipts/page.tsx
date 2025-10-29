@@ -16,6 +16,9 @@ import {
   CheckSquare,
   Square,
   X,
+  SlidersHorizontal,
+  Save,
+  Loader2,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -24,8 +27,42 @@ import CameraCapture from "../../components/CameraCapture";
 import UploaderSelector from "../../components/UploaderSelector";
 import { ReceiptData } from "../../types";
 import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryStyles";
+import { ALL_CATEGORIES, getSubcategoriesForCategory } from "../../utils/categoryCatalog";
 
 type ExportFormat = "csv" | "json" | "zip";
+
+type FiltersState = {
+  searchTerm: string;
+  category: string;
+  subcategory: string;
+  store: string;
+  uploader: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const DEFAULT_FILTERS: FiltersState = {
+  searchTerm: "",
+  category: "",
+  subcategory: "",
+  store: "",
+  uploader: "",
+  dateFrom: "",
+  dateTo: "",
+};
+
+const FILTER_STORAGE_KEY = "harina.receipts.filters.v1";
+const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
+
+const filtersAreActive = (filters: FiltersState) =>
+  Boolean(
+    filters.category ||
+      filters.subcategory ||
+      filters.store ||
+      filters.uploader ||
+      filters.dateFrom ||
+      filters.dateTo
+  );
 
 const EXPORT_FORMATS: Array<{ value: ExportFormat; label: string; description: string }> = [
   { value: "csv", label: "CSV (再インポート用)", description: "インポート機能と完全互換の形式" },
@@ -49,6 +86,23 @@ interface StatsState {
 
 export default function ReceiptsPage() {
   const router = useRouter();
+  const readStoredFilters = (): FiltersState => {
+    if (typeof window === "undefined") {
+      return { ...DEFAULT_FILTERS };
+    }
+    const raw = window.sessionStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) {
+      return { ...DEFAULT_FILTERS };
+    }
+    try {
+      const parsed = JSON.parse(raw) as Partial<FiltersState>;
+      return { ...DEFAULT_FILTERS, ...parsed };
+    } catch (error) {
+      console.warn("Failed to parse stored receipt filters", error);
+      return { ...DEFAULT_FILTERS };
+    }
+  };
+  const hasHydratedFiltersRef = useRef(false);
   const [receipts, setReceipts] = useState<ReceiptData[]>([]);
   const [stats, setStats] = useState<StatsState>({
     totalReceipts: 0,
@@ -71,16 +125,73 @@ export default function ReceiptsPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
-  const allSelectableIds = useMemo(
-    () =>
-      receipts
-        .map((receipt) => receipt.id)
-        .filter((id): id is number => typeof id === "number"),
-    [receipts]
-  );
-  const isAllSelected = allSelectableIds.length > 0 && selectedIds.length === allSelectableIds.length;
-  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const hasSelection = selectedIds.length > 0;
+  const [filters, setFilters] = useState<FiltersState>({ ...DEFAULT_FILTERS });
+  const [showFilters, setShowFilters] = useState(false);
+  const [listBulkCategory, setListBulkCategory] = useState("");
+  const [listBulkSubcategory, setListBulkSubcategory] = useState("");
+  const [isListBulkSaving, setIsListBulkSaving] = useState(false);
+  const resolveModel = (receipt: ReceiptData) => receipt.model_used || DEFAULT_MODEL;
+  useEffect(() => {
+    const stored = readStoredFilters();
+    setFilters(stored);
+    setShowFilters(filtersAreActive(stored));
+    hasHydratedFiltersRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!hasHydratedFiltersRef.current) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.sessionStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+  }, [filters]);
+  const hasActiveFilters = filtersAreActive(filters);
+  const categoryOptions = useMemo(() => {
+    const merged = new Set<string>(ALL_CATEGORIES);
+    receipts.forEach((receipt) =>
+      receipt.items?.forEach((item) => {
+        if (item.category) {
+          merged.add(item.category);
+        }
+      })
+    );
+    return Array.from(merged).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [receipts]);
+  const storeOptions = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.store_name) {
+        set.add(receipt.store_name);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [receipts]);
+  const uploaderOptions = useMemo(() => {
+    const set = new Set<string>();
+    receipts.forEach((receipt) => {
+      if (receipt.uploader) {
+        set.add(receipt.uploader);
+      }
+    });
+    return Array.from(set).sort();
+  }, [receipts]);
+  const subcategoryOptions = useMemo(() => {
+    if (!filters.category) return [];
+    const base = new Set<string>(getSubcategoriesForCategory(filters.category));
+    receipts.forEach((receipt) => {
+      receipt.items?.forEach((item) => {
+        if (item.category === filters.category && item.subcategory) {
+          base.add(item.subcategory);
+        }
+      });
+    });
+    return Array.from(base).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [filters.category, receipts]);
+  const listBulkSubcategoryOptions = useMemo(() => {
+    if (!listBulkCategory) return [];
+    return getSubcategoriesForCategory(listBulkCategory);
+  }, [listBulkCategory]);
 
   useEffect(() => {
     fetchReceipts();
@@ -98,6 +209,100 @@ export default function ReceiptsPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
+
+  const filteredReceipts = useMemo(() => {
+    return receipts.filter((receipt) => {
+      const searchTerm = filters.searchTerm.trim().toLowerCase();
+
+      if (searchTerm) {
+        const storeHit = receipt.store_name?.toLowerCase().includes(searchTerm);
+        const receiptNumberHit = receipt.receipt_number?.toLowerCase().includes(searchTerm);
+        const itemHit = receipt.items?.some((item) =>
+          item.name?.toLowerCase().includes(searchTerm)
+        );
+
+        if (!storeHit && !receiptNumberHit && !itemHit) {
+          return false;
+        }
+      }
+
+      if (filters.store && receipt.store_name !== filters.store) {
+        return false;
+      }
+
+      if (filters.uploader && receipt.uploader !== filters.uploader) {
+        return false;
+      }
+
+      if (filters.dateFrom) {
+        if (!receipt.transaction_date || receipt.transaction_date < filters.dateFrom) {
+          return false;
+        }
+      }
+
+      if (filters.dateTo) {
+        if (!receipt.transaction_date || receipt.transaction_date > filters.dateTo) {
+          return false;
+        }
+      }
+
+      const categories = new Set(
+        receipt.items?.map((item) => item.category?.trim()).filter(Boolean) as string[] ?? []
+      );
+
+      if (filters.category && !categories.has(filters.category)) {
+        return false;
+      }
+
+      if (filters.subcategory) {
+        const hasSubcategory = receipt.items?.some(
+          (item) =>
+            item.category?.trim() === filters.category &&
+            item.subcategory?.trim() === filters.subcategory
+        );
+        if (!hasSubcategory) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [filters, receipts]);
+
+  const filteredStats = useMemo(() => {
+    const totalReceipts = filteredReceipts.length;
+    const totalAmount = filteredReceipts.reduce(
+      (acc, receipt) => acc + (receipt.total_amount ?? 0),
+      0
+    );
+    const totalItems = filteredReceipts.reduce((acc, receipt) => {
+      const itemsCount =
+        receipt.items?.reduce((itemAcc, item) => itemAcc + (item.quantity ?? 0), 0) ?? 0;
+      return acc + itemsCount;
+    }, 0);
+
+    return {
+      totalReceipts,
+      totalAmount,
+      totalItems,
+      avgAmount: totalReceipts > 0 ? Math.round(totalAmount / totalReceipts) : 0,
+    };
+  }, [filteredReceipts]);
+
+  const allSelectableIds = useMemo(
+    () =>
+      filteredReceipts
+        .map((receipt) => receipt.id)
+        .filter((id): id is number => typeof id === "number"),
+    [filteredReceipts]
+  );
+  const isAllSelected = allSelectableIds.length > 0 && selectedIds.length === allSelectableIds.length;
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const hasSelection = selectedIds.length > 0;
+
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => allSelectableIds.includes(id)));
+  }, [allSelectableIds]);
 
   const fetchReceipts = async () => {
     try {
@@ -120,6 +325,33 @@ export default function ReceiptsPage() {
         });
       }
       setSelectedIds([]);
+      if (Array.isArray(data.receipts)) {
+        setFilters((prev) => {
+          const next: FiltersState = {
+            ...prev,
+            store:
+              prev.store && data.receipts.some((receipt: ReceiptData) => receipt.store_name === prev.store)
+                ? prev.store
+                : "",
+            uploader:
+              prev.uploader && data.receipts.some((receipt: ReceiptData) => receipt.uploader === prev.uploader)
+                ? prev.uploader
+                : "",
+            subcategory:
+              prev.category && getSubcategoriesForCategory(prev.category).includes(prev.subcategory)
+                ? prev.subcategory
+                : "",
+          };
+          if (
+            next.store === prev.store &&
+            next.uploader === prev.uploader &&
+            next.subcategory === prev.subcategory
+          ) {
+            return prev;
+          }
+          return next;
+        });
+      }
     } catch (error) {
       console.error(error);
       toast.error("レシートデータの取得に失敗しました");
@@ -278,7 +510,25 @@ export default function ReceiptsPage() {
 
       setProcessingSteps(3);
       setProcessingMessage("インポート完了！");
-      toast.success(`インポート成功: レシート${result.newReceipts}件 / 商品${result.newItems}件`);
+      const duplicateMessage =
+        result.duplicatesSkipped && result.duplicatesSkipped > 0
+          ? ` / 重複スキップ${result.duplicatesSkipped}件`
+          : "";
+
+      if (result.duplicatesSkipped && result.duplicatesSkipped > 0 && result.newReceipts === 0) {
+        toast.info(`すでに登録済みのレシートが${result.duplicatesSkipped}件あったよ`, {
+          position: "top-center",
+          autoClose: 4000,
+        });
+      } else {
+        toast.success(
+          `インポート成功: レシート${result.newReceipts}件 / 商品${result.newItems}件${duplicateMessage}`,
+          {
+            position: "top-center",
+            autoClose: 4000,
+          }
+        );
+      }
       fetchReceipts();
     } catch (error) {
       console.error(error);
@@ -324,6 +574,102 @@ export default function ReceiptsPage() {
     }
   };
 
+  const handleFilterChange = (key: keyof typeof filters, value: string) => {
+    setFilters((prev) => {
+      if (key === "category") {
+        return {
+          ...prev,
+          category: value,
+          subcategory: "",
+        };
+      }
+      return {
+        ...prev,
+        [key]: value,
+      };
+    });
+  };
+
+  const resetFilters = () => {
+    setFilters({ ...DEFAULT_FILTERS });
+    setShowFilters(false);
+  };
+
+  const handleListBulkCategoryChange = (value: string) => {
+    setListBulkCategory(value);
+    if (!value) {
+      setListBulkSubcategory("");
+      return;
+    }
+    const options = getSubcategoriesForCategory(value);
+    if (!options.includes(listBulkSubcategory)) {
+      setListBulkSubcategory("");
+    }
+  };
+
+  const handleListBulkSave = async () => {
+    if (selectedIds.length === 0) {
+      toast.info("レシートを選択してください");
+      return;
+    }
+    const trimmedCategory = listBulkCategory.trim();
+    if (!trimmedCategory) {
+      toast.warn("カテゴリを選択してください");
+      return;
+    }
+    const trimmedSubcategory = listBulkSubcategory.trim();
+    setIsListBulkSaving(true);
+    try {
+      const response = await fetch("/api/receipt-items/bulk-update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          receiptIds: selectedIds,
+          category: trimmedCategory,
+          subcategory: trimmedSubcategory,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || "レシートの更新に失敗しました");
+      }
+
+      const result = await response.json().catch(() => ({}));
+      const updatedItems =
+        typeof result.updatedItems === "number" ? result.updatedItems : undefined;
+      const selectedSet = new Set(selectedIds);
+      setReceipts((prev) =>
+        prev.map((receipt) =>
+          receipt.id && selectedSet.has(receipt.id)
+            ? {
+                ...receipt,
+                items: receipt.items?.map((item) => ({
+                  ...item,
+                  category: trimmedCategory,
+                  subcategory: trimmedSubcategory || "",
+                })),
+              }
+            : receipt
+        )
+      );
+      toast.success(
+        updatedItems !== undefined
+          ? `カテゴリを更新しました（${updatedItems}件）`
+          : "カテゴリを更新しました"
+      );
+    } catch (error) {
+      console.error("Failed to bulk update receipts:", error);
+      toast.error(
+        error instanceof Error ? error.message : "レシートの更新に失敗しました"
+      );
+    } finally {
+      setIsListBulkSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-washi-100">
       <header className="sticky top-0 z-30 border-b border-washi-300 bg-white/90 backdrop-blur">
@@ -341,12 +687,41 @@ export default function ReceiptsPage() {
               <input
                 className="flex-1 bg-transparent border-none text-sm text-sumi-700 focus:outline-none"
                 placeholder="店舗名・金額・メモで検索..."
+                value={filters.searchTerm}
+                onChange={(event) => handleFilterChange("searchTerm", event.target.value)}
               />
+              {storeOptions.length > 0 && (
+                <select
+                  value={filters.store}
+                  onChange={(event) => handleFilterChange("store", event.target.value)}
+                  className="hidden md:block rounded-lg border border-washi-300 bg-white px-2 py-1 text-xs font-semibold text-sumi-600 hover:border-teal-300 focus:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  aria-label="店舗でフィルター"
+                >
+                  <option value="">全店舗</option>
+                  {storeOptions.map((store) => (
+                    <option key={`quick-store-${store}`} value={store}>
+                      {store}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div className="hidden sm:flex gap-2 text-xs text-sumi-500">
-                <span className="px-2 py-1 rounded-full bg-washi-200">2025年</span>
-                <span className="px-2 py-1 rounded-full bg-washi-200">先月</span>
-                <span className="px-2 py-1 rounded-full bg-washi-200 lg:inline-flex hidden">未整理</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200">カテゴリ</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200">店舗</span>
+                <span className="px-2 py-1 rounded-full bg-washi-200 lg:inline-flex hidden">期間</span>
               </div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-washi-300 bg-white px-3 py-1.5 text-xs font-semibold text-sumi-600 hover:bg-washi-100"
+                onClick={() => setShowFilters((prev) => !prev)}
+                aria-pressed={showFilters}
+              >
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">詳細</span>
+                {hasActiveFilters ? (
+                  <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-teal-500" aria-hidden="true" />
+                ) : null}
+              </button>
             </div>
           </div>
 
@@ -402,54 +777,218 @@ export default function ReceiptsPage() {
             </button>
           </div>
         </div>
+        {(showFilters || hasActiveFilters) && (
+          <div className="px-4 sm:px-6 lg:px-8 pb-3">
+            <div className="rounded-2xl border border-washi-300 bg-white px-4 py-4 shadow-sm">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-category" className="text-xs font-semibold text-sumi-500">
+                    カテゴリ
+                  </label>
+                  <select
+                    id="filter-category"
+                    value={filters.category}
+                    onChange={(event) => handleFilterChange("category", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-subcategory" className="text-xs font-semibold text-sumi-500">
+                    サブカテゴリ
+                  </label>
+                  <select
+                    id="filter-subcategory"
+                    value={filters.subcategory}
+                    onChange={(event) => handleFilterChange("subcategory", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                    disabled={!filters.category}
+                  >
+                    <option value="">すべて</option>
+                    {subcategoryOptions.map((subcategory) => (
+                      <option key={subcategory} value={subcategory}>
+                        {subcategory}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-store" className="text-xs font-semibold text-sumi-500">
+                    店舗
+                  </label>
+                  <select
+                    id="filter-store"
+                    value={filters.store}
+                    onChange={(event) => handleFilterChange("store", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {storeOptions.map((store) => (
+                      <option key={store} value={store}>
+                        {store}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-uploader" className="text-xs font-semibold text-sumi-500">
+                    アップロード者
+                  </label>
+                  <select
+                    id="filter-uploader"
+                    value={filters.uploader}
+                    onChange={(event) => handleFilterChange("uploader", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  >
+                    <option value="">すべて</option>
+                    {uploaderOptions.map((uploader) => (
+                      <option key={uploader} value={uploader}>
+                        {uploader}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-date-from" className="text-xs font-semibold text-sumi-500">
+                    日付（開始）
+                  </label>
+                  <input
+                    id="filter-date-from"
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(event) => handleFilterChange("dateFrom", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="filter-date-to" className="text-xs font-semibold text-sumi-500">
+                    日付（終了）
+                  </label>
+                  <input
+                    id="filter-date-to"
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(event) => handleFilterChange("dateTo", event.target.value)}
+                    className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-2 rounded-xl border border-washi-300 bg-white px-4 py-2 text-sm font-semibold text-sumi-600 hover:bg-washi-100"
+                >
+                  フィルターをリセット
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="px-4 sm:px-6 lg:px-8 py-6 space-y-8">
         <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard title="総レシート数" value={`${stats.totalReceipts.toLocaleString()} 件`} tone="indigo" />
-          <StatCard title="総支出額" value={`¥${stats.totalAmount.toLocaleString()}`} tone="teal" />
-          <StatCard title="平均レシート額" value={`¥${stats.avgAmount.toLocaleString()}`} tone="matcha" />
+          <StatCard title="総レシート数" value={`${filteredStats.totalReceipts.toLocaleString()} 件`} tone="indigo" />
+          <StatCard title="総支出額" value={`¥${filteredStats.totalAmount.toLocaleString()}`} tone="teal" />
+          <StatCard title="平均レシート額" value={`¥${filteredStats.avgAmount.toLocaleString()}`} tone="matcha" />
           <StatCard
             title="商品登録数"
-            value={`${stats.totalItems.toLocaleString()} 点`}
+            value={`${filteredStats.totalItems.toLocaleString()} 点`}
             tone="sakura"
           />
         </section>
 
         {selectionMode && (
-          <section className="bg-white border border-washi-300 rounded-3xl shadow-sm px-5 py-4 flex flex-wrap items-center gap-3 justify-between">
-            <div className="flex items-center gap-3 text-sm text-sumi-600">
-              <CheckSquare size={16} className="text-teal-600" />
-              <span>
-                {hasSelection
-                  ? `${selectedIds.length}件のレシートを選択中`
-                  : "削除したいレシートを選択してください"}
-              </span>
+          <section className="bg-white border border-washi-300 rounded-3xl shadow-sm px-5 py-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-3 justify-between">
+              <div className="flex items-center gap-3 text-sm text-sumi-600">
+                <CheckSquare size={16} className="text-teal-600" />
+                <span>
+                  {hasSelection
+                    ? `${selectedIds.length}件のレシートを選択中`
+                    : "操作したいレシートを選択してください"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-washi-300 text-sumi-600 hover:bg-washi-100 text-xs sm:text-sm"
+                  onClick={handleSelectAll}
+                >
+                  {isAllSelected ? (
+                    <>
+                      <X size={14} />
+                      全選択解除
+                    </>
+                  ) : (
+                    <>
+                      <Square size={14} />
+                      全選択
+                    </>
+                  )}
+                </button>
+                <button
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
+                  onClick={handleBulkDelete}
+                  disabled={!hasSelection || isDeleting}
+                >
+                  <Trash2 size={16} />
+                  {isDeleting ? "削除中..." : "選択したレシートを削除"}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label htmlFor="list-bulk-category" className="text-xs font-semibold text-sumi-500">
+                  選択レシートのカテゴリ
+                </label>
+                <select
+                  id="list-bulk-category"
+                  value={listBulkCategory}
+                  onChange={(event) => handleListBulkCategoryChange(event.target.value)}
+                  className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                >
+                  <option value="">選択してください</option>
+                  {categoryOptions.map((category) => (
+                    <option key={`bulk-list-${category}`} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 min-w-[160px]">
+                <label htmlFor="list-bulk-subcategory" className="text-xs font-semibold text-sumi-500">
+                  サブカテゴリ
+                </label>
+                <select
+                  id="list-bulk-subcategory"
+                  value={listBulkSubcategory}
+                  onChange={(event) => setListBulkSubcategory(event.target.value)}
+                  className="rounded-xl border border-washi-300 px-3 py-2 text-sm text-sumi-800 focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white"
+                  disabled={!listBulkCategory}
+                >
+                  <option value="">選択なし</option>
+                  {listBulkSubcategoryOptions.map((subcategory) => (
+                    <option key={`bulk-list-sub-${subcategory}`} value={subcategory}>
+                      {subcategory}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <button
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-washi-300 text-sumi-600 hover:bg-washi-100 text-xs sm:text-sm"
-                onClick={handleSelectAll}
+                type="button"
+                onClick={handleListBulkSave}
+                disabled={!hasSelection || isListBulkSaving}
+                className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isAllSelected ? (
-                  <>
-                    <X size={14} />
-                    全選択解除
-                  </>
-                ) : (
-                  <>
-                    <Square size={14} />
-                    全選択
-                  </>
-                )}
-              </button>
-              <button
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm"
-                onClick={handleBulkDelete}
-                disabled={!hasSelection || isDeleting}
-              >
-                <Trash2 size={16} />
-                {isDeleting ? "削除中..." : "選択したレシートを削除"}
+                {isListBulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
+                選択レシートを更新
               </button>
             </div>
           </section>
@@ -475,6 +1014,7 @@ export default function ReceiptsPage() {
                   <th className="px-3">日付</th>
                   <th className="px-3">店舗</th>
                   <th className="px-3">アップロード者</th>
+                  <th className="px-3">モデル</th>
                   <th className="px-3">カテゴリ</th>
                   <th className="px-3 text-right">金額</th>
                   <th className="px-3">状態</th>
@@ -483,18 +1023,18 @@ export default function ReceiptsPage() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
+                    <td colSpan={selectionMode ? 8 : 7} className="px-3 py-10 text-center text-sumi-500">
                       データを読み込み中...
                     </td>
                   </tr>
-                ) : receipts.length === 0 ? (
+                ) : filteredReceipts.length === 0 ? (
                   <tr>
-                    <td colSpan={selectionMode ? 7 : 6} className="px-3 py-10 text-center text-sumi-500">
-                      レシートがありません。右下のボタンからレシートを追加してください。
+                    <td colSpan={selectionMode ? 8 : 7} className="px-3 py-10 text-center text-sumi-500">
+                      条件に一致するレシートがありません。フィルターを調整してください。
                     </td>
                   </tr>
                 ) : (
-                  receipts.slice(0, 6).map((receipt) => {
+                  filteredReceipts.slice(0, 6).map((receipt) => {
                     const primaryCategory = resolvePrimaryCategory(receipt);
                     const categoryLabel = getCategoryLabel(primaryCategory);
                     const categoryClasses = getCategoryBadgeClasses(primaryCategory);
@@ -540,6 +1080,11 @@ export default function ReceiptsPage() {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-sm text-sumi-600">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-washi-200 px-3 py-1 text-xs font-medium text-sumi-600">
+                            {resolveModel(receipt)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-sumi-600">
                           <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${categoryClasses}`}>
                             <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />
                             {categoryLabel}
@@ -576,13 +1121,13 @@ export default function ReceiptsPage() {
 
           {isLoading ? (
             <div className="text-center py-20 text-sumi-500">データを読み込み中...</div>
-          ) : receipts.length === 0 ? (
+          ) : filteredReceipts.length === 0 ? (
             <div className="text-center py-20 text-sumi-500">
-              レシートがありません。右下のアクションから追加してください。
+              条件に一致するレシートがありません。フィルターを変更して再検索してください。
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {receipts.map((receipt) => {
+              {filteredReceipts.map((receipt) => {
                 const primaryCategory = resolvePrimaryCategory(receipt);
                 const categoryLabel = getCategoryLabel(primaryCategory);
                 const categoryClasses = getCategoryBadgeClasses(primaryCategory);
@@ -598,11 +1143,11 @@ export default function ReceiptsPage() {
                   }
                 };
 
-                return (
-                  <article
-                    key={receipt.id}
-                    className={`bg-white border rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4 ${
-                      isChecked ? "border-teal-300 ring-2 ring-teal-200" : "border-washi-300"
+            return (
+              <article
+                key={receipt.id}
+                className={`bg-white border rounded-3xl p-4 shadow-sm hover:shadow-lg transition-all cursor-pointer flex flex-col gap-4 ${
+                  isChecked ? "border-teal-300 ring-2 ring-teal-200" : "border-washi-300"
                     }`}
                     onClick={handleCardClick}
                   >
@@ -654,6 +1199,9 @@ export default function ReceiptsPage() {
                     <div className="flex items-center gap-2 text-xs text-sumi-500">
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-washi-200 text-sumi-600">
                         {receipt.uploader || "夫"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-washi-200 text-sumi-600">
+                        {resolveModel(receipt)}
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${categoryClasses}`}>
                         <span className="inline-block h-2 w-2 rounded-full bg-current opacity-80" />

@@ -57,3 +57,4 @@ dist/
 .SourceSageAssets/
 app/public/uploads/*.jpg
 nginx/certs/*.pem
+app/public/uploads/*.png

@@ -11,6 +11,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/migration_add_image_data.sql:/docker-entrypoint-initdb.d/02-migration.sql
+      - ./database/migration_add_processing_settings.sql:/docker-entrypoint-initdb.d/03-migration.sql
+      - ./database/migration_add_categories.sql:/docker-entrypoint-initdb.d/04-migration.sql
+      - ./database/migration_add_model_used.sql:/docker-entrypoint-initdb.d/05-migration.sql
     ports:
       - "5436:5432"
     networks:
@@ -30,7 +33,14 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY_FREE=${GEMINI_API_KEY_FREE}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=postgresql://receipt_user:receipt_password@postgres:5432/receipt_db
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=receipt_db
+      - POSTGRES_USER=receipt_user
+      - POSTGRES_PASSWORD=receipt_password
     ports:
       - "8001:8000"
     networks:
@@ -91,7 +101,7 @@ services:
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_ALLOWED_CHANNEL_IDS=${DISCORD_ALLOWED_CHANNEL_IDS:-}
       - RECEIPT_API_URL=http://app:3000/api/process-receipt
-      - RECEIPT_MODEL=${DISCORD_RECEIPT_MODEL:-gemini}
+      - RECEIPT_MODEL=${DISCORD_RECEIPT_MODEL:-gemini/gemini-2.5-flash}
       - RECEIPT_UPLOADER=${DISCORD_RECEIPT_UPLOADER:-discord}
       - DISCORD_MAX_FILE_MB=${DISCORD_MAX_FILE_MB:-15}
       - DISCORD_CHANNEL_UPLOADERS=${DISCORD_CHANNEL_UPLOADERS:-}

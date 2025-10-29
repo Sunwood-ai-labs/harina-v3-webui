@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ReceiptData } from '../../types'
-import { saveReceiptToDatabase } from '../../lib/database'
+import { saveReceiptToDatabase, getProcessingPrompt } from '../../lib/database'
 import { parseString } from 'xml2js'
 import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
@@ -114,12 +114,22 @@ function parseXmlToReceiptData(xmlData: string, filename: string, imagePath?: st
 export async function POST(request: NextRequest) {
   let file: File | null = null
   let imagePath: string | undefined = undefined
+  let fallbackUsed = false
+  const DEFAULT_MODEL = 'gemini/gemini-2.5-flash'
+  let model: string = DEFAULT_MODEL
   
   try {
     const formData = await request.formData()
     file = formData.get('file') as File
-    const model = formData.get('model') as string || 'gemini'
+    model = (formData.get('model') as string) || DEFAULT_MODEL
     const uploader = formData.get('uploader') as string || '夫' // 👈 この行を追加
+
+    let additionalPrompt = ''
+    try {
+      additionalPrompt = await getProcessingPrompt()
+    } catch (error) {
+      console.error('Failed to load additional processing prompt:', error)
+    }
 
     if (!file) {
       return NextResponse.json(
@@ -163,6 +173,9 @@ export async function POST(request: NextRequest) {
     
     harinaFormData.append('model', harinaModel)
     harinaFormData.append('format', 'xml') // XMLフォーマットで取得
+    if (additionalPrompt && additionalPrompt.trim().length > 0) {
+      harinaFormData.append('instructions', additionalPrompt.trim())
+    }
 
     console.log('Sending request to HARINA service...')
     const harinaResponse = await fetch(`${process.env.HARINA_API_URL || 'http://harina:8000'}/process`, {
@@ -180,6 +193,8 @@ export async function POST(request: NextRequest) {
 
     const harinaResult = await harinaResponse.json()
     console.log('HARINA result:', harinaResult)
+    fallbackUsed = harinaResult.fallbackUsed === true
+    const keyType = typeof harinaResult.keyType === 'string' ? harinaResult.keyType : undefined
 
     // HARINA APIのレスポンス形式をチェック
     if (!harinaResult.success) {
@@ -196,6 +211,9 @@ export async function POST(request: NextRequest) {
       // XMLをパースしてReceiptDataに変換
       receiptData = await parseXmlToReceiptData(xmlData, file.name, imagePath)
       receiptData.uploader = uploader; // 👈 パースしたデータにuploaderを追加
+      receiptData.fallbackUsed = fallbackUsed
+      receiptData.model_used = model
+      receiptData.keyType = keyType
       console.log('Parsed receipt data:', receiptData)
     } catch (xmlError) {
       console.error('XML parsing error:', xmlError)
@@ -205,6 +223,9 @@ export async function POST(request: NextRequest) {
       try {
         receiptData = parseXmlWithRegex(xmlData, file.name, imagePath)
         receiptData.uploader = uploader; // 👈 こちらにも追加
+        receiptData.fallbackUsed = fallbackUsed
+        receiptData.model_used = model
+        receiptData.keyType = keyType
         console.log('Regex-parsed receipt data:', receiptData)
       } catch (regexError) {
         console.error('Regex parsing also failed:', regexError)
@@ -226,21 +247,38 @@ export async function POST(request: NextRequest) {
           ],
           processed_at: new Date().toISOString(),
           image_path: imagePath || undefined,
-          uploader: uploader // 👈 ダミーデータにもuploaderを追加
+          uploader: uploader, // 👈 ダミーデータにもuploaderを追加
+          fallbackUsed,
+          keyType: keyType ?? 'primary'
         }
       }
     }
 
     // データベースに保存
     try {
-      const receiptId = await saveReceiptToDatabase(receiptData)
-      receiptData.id = receiptId
+      const saveResult = await saveReceiptToDatabase(receiptData)
+      receiptData.id = saveResult.id
+
+      return NextResponse.json({
+        ...receiptData,
+        duplicate: saveResult.wasDuplicate,
+        duplicateOf: saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined,
+          fallbackUsed,
+          model_used: model,
+          keyType: keyType ?? receiptData.keyType,
+      })
     } catch (dbError) {
       console.error('Database save error:', dbError)
       // データベース保存に失敗してもレスポンスは返す
     }
 
-    return NextResponse.json(receiptData)
+    return NextResponse.json({
+      ...receiptData,
+      duplicate: false,
+      fallbackUsed,
+      model_used: model,
+      keyType: keyType ?? receiptData.keyType,
+    })
   } catch (error) {
     console.error('Receipt processing error:', error)
     
@@ -285,18 +323,37 @@ export async function POST(request: NextRequest) {
         ],
         processed_at: new Date().toISOString(),
         image_path: imagePath || undefined,
-        uploader: '夫' // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
+        uploader: '夫', // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
+        fallbackUsed: false,
+        model_used: model,
+        keyType: 'primary',
       }
       
       // データベースに保存を試行
       try {
-        const receiptId = await saveReceiptToDatabase(dummyReceiptData)
-        dummyReceiptData.id = receiptId
+        const saveResult = await saveReceiptToDatabase(dummyReceiptData)
+        dummyReceiptData.id = saveResult.id
+        dummyReceiptData.duplicate = saveResult.wasDuplicate
+        dummyReceiptData.duplicateOf = saveResult.wasDuplicate ? saveResult.duplicateOf ?? null : undefined
+        dummyReceiptData.model_used = model
+        return NextResponse.json({
+          ...dummyReceiptData,
+          duplicate: dummyReceiptData.duplicate ?? false,
+          fallbackUsed: false,
+          model_used: model,
+          keyType: 'primary',
+        })
       } catch (dbError) {
         console.error('Database save error:', dbError)
       }
-      
-      return NextResponse.json(dummyReceiptData)
+
+      return NextResponse.json({
+        ...dummyReceiptData,
+        duplicate: false,
+        fallbackUsed: false,
+        model_used: model,
+        keyType: 'primary',
+      })
     }
     
     return NextResponse.json(

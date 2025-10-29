@@ -1,7 +1,9 @@
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import { ReceiptData, ReceiptItem } from "../types";
 
 // データベースから取得するレシートの型定義
+const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
+
 interface DbReceiptRow {
   id: number;
   filename: string;
@@ -18,6 +20,7 @@ interface DbReceiptRow {
   processed_at: string;
   image_path: string;
   uploader: string; // 👈 この行を追加
+  model_used: string | null;
 }
 
 // データベースから取得するアイテムの型定義
@@ -50,6 +53,7 @@ interface DbUserStatRow {
 
 interface DbReceiptWithItemsRow extends DbReceiptRow {
   items: Array<{
+    id?: number | string | null;
     name: string | null;
     category: string | null;
     subcategory: string | null;
@@ -57,6 +61,96 @@ interface DbReceiptWithItemsRow extends DbReceiptRow {
     unit_price: string | null;
     total_price: string | null;
   }> | null;
+}
+
+interface DbDuplicateGroupRow {
+  transaction_date: string | null;
+  store_name: string | null;
+  total_amount: string | null;
+  receipts: Array<{
+    id: number;
+    filename: string | null;
+    store_name: string | null;
+    transaction_date: string | null;
+    transaction_time: string | null;
+    total_amount: string | null;
+    uploader: string | null;
+    processed_at: string | null;
+    image_path: string | null;
+    model_used: string | null;
+  }>;
+}
+
+interface DbProcessingSettingsRow {
+  additional_prompt: string;
+}
+
+async function ensureProcessingSettingsTable(client: PoolClient) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS processing_settings (
+      id SERIAL PRIMARY KEY,
+      additional_prompt TEXT NOT NULL DEFAULT '',
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await client.query(`
+    INSERT INTO processing_settings (id, additional_prompt)
+    VALUES (1, '')
+    ON CONFLICT (id) DO NOTHING
+  `);
+}
+
+let schemaEnsured = false;
+let schemaEnsuringPromise: Promise<void> | null = null;
+
+async function ensureModelUsedColumn(client: PoolClient) {
+  const columnExists = await client.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_name = 'receipts'
+        AND column_name = 'model_used'
+      LIMIT 1`
+  );
+
+  if (columnExists.rowCount === 0) {
+    const defaultModelLiteral = DEFAULT_MODEL.replace(/'/g, "''"); // escape single quotes for SQL literal
+
+    await client.query(
+      `ALTER TABLE receipts
+         ADD COLUMN model_used VARCHAR(100) DEFAULT '${defaultModelLiteral}'`
+    );
+  }
+
+  await client.query(
+    `UPDATE receipts
+        SET model_used = $1
+      WHERE model_used IS NULL OR model_used = ''`,
+    [DEFAULT_MODEL]
+  );
+}
+
+async function ensureDatabaseSchema(client: PoolClient) {
+  if (schemaEnsured) {
+    return;
+  }
+
+  if (!schemaEnsuringPromise) {
+    schemaEnsuringPromise = (async () => {
+      await ensureProcessingSettingsTable(client);
+      await ensureModelUsedColumn(client);
+      schemaEnsured = true;
+    })().finally(() => {
+      schemaEnsuringPromise = null;
+    });
+  }
+
+  try {
+    await schemaEnsuringPromise;
+  } catch (error) {
+    schemaEnsured = false;
+    throw error;
+  }
 }
 
 // PostgreSQL接続プール
@@ -72,13 +166,58 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
+export interface SaveReceiptResult {
+  id: number;
+  wasDuplicate: boolean;
+  duplicateOf?: number | null;
+}
+
+export interface DuplicateGroup {
+  transactionDate: string | null;
+  storeName: string | null;
+  totalAmount: number;
+  receipts: Array<{
+    id: number;
+    filename: string | null;
+    store_name: string | null;
+    transaction_date: string | null;
+    transaction_time: string | null;
+    total_amount: number | null;
+    uploader: string | null;
+    processed_at: string | null;
+    image_path: string | null;
+    model_used: string | null;
+  }>;
+}
+
+async function findDuplicateReceiptId(
+  client: PoolClient,
+  transactionDate?: string | null,
+  totalAmount?: number | null
+): Promise<number | null> {
+  if (!transactionDate || totalAmount === undefined || totalAmount === null) {
+    return null;
+  }
+
+  const duplicateQuery = await client.query<{ id: number }>(
+    `SELECT id FROM receipts
+     WHERE transaction_date = $1
+       AND total_amount = $2
+     ORDER BY processed_at DESC
+     LIMIT 1`,
+    [transactionDate, totalAmount]
+  );
+
+  return duplicateQuery.rows[0]?.id ?? null;
+}
+
 // レシートをデータベースに保存
 export async function saveReceiptToDatabase(
   receipt: ReceiptData
-): Promise<number> {
+): Promise<SaveReceiptResult> {
   // ビルド時はダミーIDを返す
   if (isBuildTime) {
-    return 1;
+    return { id: 1, wasDuplicate: false };
   }
 
   const client = await connectWithRetry();
@@ -86,15 +225,21 @@ export async function saveReceiptToDatabase(
   try {
     await client.query("BEGIN");
 
+    const duplicateId = await findDuplicateReceiptId(
+      client,
+      receipt.transaction_date,
+      receipt.total_amount ?? null
+    );
+
     // レシート基本情報を保存
     const receiptResult = await client.query(
       `INSERT INTO receipts (
         filename, store_name, store_address, store_phone,
         transaction_date, transaction_time, receipt_number,
         subtotal, tax, total_amount, payment_method, processed_at,
-        image_path, uploader
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      RETURNING id`, // 👆 uploader を追加し、VALUES を $14 までに
+        image_path, uploader, model_used
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      RETURNING id`,
       [
         receipt.filename,
         receipt.store_name,
@@ -109,7 +254,8 @@ export async function saveReceiptToDatabase(
         receipt.payment_method,
         receipt.processed_at || new Date().toISOString(),
         receipt.image_path,
-        receipt.uploader, // 👈 パラメータに receipt.uploader を追加
+        receipt.uploader,
+        receipt.model_used || DEFAULT_MODEL,
       ]
     );
 
@@ -137,7 +283,11 @@ export async function saveReceiptToDatabase(
     }
 
     await client.query("COMMIT");
-    return receiptId;
+    return {
+      id: receiptId,
+      wasDuplicate: duplicateId !== null,
+      duplicateOf: duplicateId ?? null,
+    };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -164,6 +314,14 @@ async function connectWithRetry(maxRetries = 5, delay = 2000): Promise<any> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const client = await pool.connect();
+
+      try {
+        await ensureDatabaseSchema(client);
+      } catch (schemaError) {
+        client.release();
+        throw schemaError;
+      }
+
       return client;
     } catch (error) {
       console.log(
@@ -210,6 +368,7 @@ export async function getReceiptsFromDatabase(
 
       const items: ReceiptItem[] = itemsResult.rows.map(
         (item: DbReceiptItemRow) => ({
+          id: item.id,
           name: item.name,
           category: item.category,
           subcategory: item.subcategory,
@@ -236,6 +395,7 @@ export async function getReceiptsFromDatabase(
         processed_at: receiptRow.processed_at,
         image_path: receiptRow.image_path,
         uploader: receiptRow.uploader, // 👈 この行を追加
+        model_used: receiptRow.model_used || DEFAULT_MODEL,
       });
     }
 
@@ -270,6 +430,7 @@ export async function getReceiptById(id: number): Promise<ReceiptData | null> {
     )
 
     const items: ReceiptItem[] = itemsResult.rows.map((item: DbReceiptItemRow) => ({
+      id: item.id,
       name: item.name,
       category: item.category,
       subcategory: item.subcategory,
@@ -294,7 +455,8 @@ export async function getReceiptById(id: number): Promise<ReceiptData | null> {
       items,
       processed_at: receiptRow.processed_at,
       image_path: receiptRow.image_path,
-      uploader: receiptRow.uploader
+      uploader: receiptRow.uploader,
+      model_used: receiptRow.model_used || DEFAULT_MODEL,
     }
   } finally {
     client.release()
@@ -341,6 +503,108 @@ export async function deleteReceiptsByIds(ids: number[]): Promise<{ deletedRecei
   }
 }
 
+export async function updateReceiptItem(
+  itemId: number,
+  updates: { category?: string | null; subcategory?: string | null }
+): Promise<ReceiptItem | null> {
+  if (isBuildTime) {
+    throw new Error("Updates are not available during build time");
+  }
+
+  const fields: string[] = [];
+  const values: Array<string | number | null> = [];
+  let parameterIndex = 1;
+
+  if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+    fields.push(`category = $${parameterIndex++}`);
+    values.push(updates.category ?? null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "subcategory")) {
+    fields.push(`subcategory = $${parameterIndex++}`);
+    values.push(updates.subcategory ?? null);
+  }
+
+  if (fields.length === 0) {
+    return null;
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    values.push(itemId);
+    const query = `
+      UPDATE receipt_items
+      SET ${fields.join(", ")}
+      WHERE id = $${parameterIndex}
+      RETURNING *
+    `;
+
+    const result = await client.query(query, values);
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    const row = result.rows[0] as DbReceiptItemRow;
+    return {
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      subcategory: row.subcategory,
+      quantity: row.quantity,
+      unit_price: parseFloat(row.unit_price) || 0,
+      total_price: parseFloat(row.total_price) || 0,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+export async function bulkUpdateReceiptItemsByReceiptIds(
+  receiptIds: number[],
+  updates: { category?: string | null; subcategory?: string | null }
+): Promise<number> {
+  if (receiptIds.length === 0) {
+    return 0;
+  }
+
+  if (isBuildTime) {
+    throw new Error("Updates are not available during build time");
+  }
+
+  const fields: string[] = [];
+  const values: Array<string | null> = [];
+
+  if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+    fields.push(`category = $${fields.length + 1}`);
+    values.push(updates.category ?? null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, "subcategory")) {
+    fields.push(`subcategory = $${fields.length + 1}`);
+    values.push(updates.subcategory ?? null);
+  }
+
+  if (fields.length === 0) {
+    return 0;
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    const query = `
+      UPDATE receipt_items
+      SET ${fields.join(", ")}
+      WHERE receipt_id = ANY($${fields.length + 1}::int[])
+    `;
+    const result = await client.query(query, [...values, receiptIds]);
+    return result.rowCount ?? 0;
+  } finally {
+    client.release();
+  }
+}
+
 // すべてのレシートをアイテム込みで取得（バックアップ/エクスポート用）
 export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
   if (isBuildTime) {
@@ -356,7 +620,8 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
         r.*,
         COALESCE(
           json_agg(
-            json_build_object(
+          json_build_object(
+              'id', ri.id,
               'name', ri.name,
               'category', ri.category,
               'subcategory', ri.subcategory,
@@ -391,15 +656,77 @@ export async function getAllReceiptsWithItems(): Promise<ReceiptData[]> {
       processed_at: row.processed_at,
       image_path: row.image_path,
       uploader: row.uploader,
+      model_used: row.model_used || DEFAULT_MODEL,
       items:
-        row.items?.map((item) => ({
-          name: item.name || "未登録商品",
-          category: item.category || "その他",
-          subcategory: item.subcategory || "",
-          quantity: item.quantity || 1,
-          unit_price: item.unit_price ? parseFloat(item.unit_price) || 0 : 0,
-          total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
-        })) ?? [],
+        row.items?.map((item) => {
+          const itemId =
+            typeof item.id === "number"
+              ? item.id
+              : item.id
+              ? Number(item.id)
+              : undefined;
+
+          return {
+            id: itemId,
+            name: item.name || "未登録商品",
+            category: item.category || "その他",
+            subcategory: item.subcategory || "",
+            quantity: item.quantity || 1,
+            unit_price: item.unit_price ? parseFloat(item.unit_price) || 0 : 0,
+            total_price: item.total_price ? parseFloat(item.total_price) || 0 : 0,
+          };
+        }) ?? [],
+    }));
+  } finally {
+    client.release();
+  }
+}
+
+export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
+  if (isBuildTime) {
+    return [];
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    const result = await client.query(
+      `SELECT
+         transaction_date,
+         store_name,
+         total_amount,
+         json_agg(
+           json_build_object(
+             'id', id,
+             'filename', filename,
+             'store_name', store_name,
+             'transaction_date', transaction_date,
+             'transaction_time', transaction_time,
+             'total_amount', total_amount,
+             'uploader', uploader,
+             'processed_at', processed_at,
+             'image_path', image_path,
+             'model_used', COALESCE(model_used, $1)
+           )
+           ORDER BY processed_at DESC NULLS LAST
+         ) AS receipts
+       FROM receipts
+       WHERE total_amount IS NOT NULL
+       GROUP BY transaction_date, store_name, total_amount
+       HAVING COUNT(*) > 1
+       ORDER BY COUNT(*) DESC, MAX(processed_at) DESC`,
+      [DEFAULT_MODEL]
+    );
+
+    return (result.rows as DbDuplicateGroupRow[]).map((row) => ({
+      transactionDate: row.transaction_date,
+      storeName: row.store_name,
+      totalAmount: row.total_amount ? parseFloat(row.total_amount) : 0,
+      receipts: row.receipts.map((receipt) => ({
+        ...receipt,
+        total_amount: receipt.total_amount ? parseFloat(receipt.total_amount) : null,
+        model_used: receipt.model_used || DEFAULT_MODEL,
+      })),
     }));
   } finally {
     client.release();
@@ -484,6 +811,7 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
 
   let newReceiptsCount = 0;
   let newItemsCount = 0;
+  let duplicateReceiptsCount = 0;
 
   try {
     await client.query('BEGIN');
@@ -492,33 +820,45 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
       const items = receiptsByFilename[filename];
       const firstItem = items[0];
 
-      // 同じレシートが既に存在するか確認（店名と日付で簡易的に判断）
+      if (!firstItem) {
+        continue;
+      }
+
+      const transactionDate = firstItem.日付 ? firstItem.日付.trim() : null;
+      const transactionTime = firstItem.時間 ? firstItem.時間.trim() : null;
+      const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.金額) || 0), 0);
+
+      const duplicateId = await findDuplicateReceiptId(client, transactionDate, totalAmount);
+      if (duplicateId) {
+        duplicateReceiptsCount += 1;
+        continue;
+      }
+
+      // 同じレシートが既に存在するか（店名と日時で判断）
       const existingReceipt = await client.query(
         'SELECT id FROM receipts WHERE store_name = $1 AND transaction_date = $2 AND transaction_time = $3 LIMIT 1',
-        [firstItem.購入場所, firstItem.日付.trim(), firstItem.時間.trim()]
+        [firstItem.購入場所, transactionDate, transactionTime]
       );
 
       let receiptId;
 
       if (existingReceipt.rows.length === 0) {
-        // 新しいレシートを登録
-        const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.金額) || 0), 0);
-        
         const receiptResult = await client.query(
           `INSERT INTO receipts (
             filename, store_name, transaction_date, transaction_time,
-            total_amount, payment_method, uploader, processed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            total_amount, payment_method, uploader, processed_at, model_used
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING id`,
           [
             filename,
             firstItem.購入場所,
-            firstItem.日付.trim(),
-            firstItem.時間.trim(),
+            transactionDate,
+            transactionTime,
             totalAmount,
             firstItem.支払方法,
             firstItem.アップローダー,
-            new Date().toISOString()
+            new Date().toISOString(),
+            DEFAULT_MODEL,
           ]
         );
         receiptId = receiptResult.rows[0].id;
@@ -551,7 +891,8 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
     
     return {
       newReceipts: newReceiptsCount,
-      newItems: newItemsCount
+      newItems: newItemsCount,
+      duplicatesSkipped: duplicateReceiptsCount,
     };
   } catch (error) {
     await client.query('ROLLBACK');
@@ -584,5 +925,66 @@ export async function testDatabaseConnection(): Promise<boolean> {
       user: process.env.POSTGRES_USER || "receipt_user",
     });
     return false;
+  }
+}
+
+export async function getProcessingPrompt(): Promise<string> {
+  if (isBuildTime) {
+    return '';
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    await ensureProcessingSettingsTable(client);
+
+    const result = await client.query(
+      'SELECT additional_prompt FROM processing_settings ORDER BY id ASC LIMIT 1'
+    );
+
+    if (result.rowCount === 0) {
+      return '';
+    }
+
+    const row = (result.rows[0] ?? {}) as DbProcessingSettingsRow;
+    return row.additional_prompt ?? '';
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateProcessingPrompt(prompt: string): Promise<string> {
+  if (isBuildTime) {
+    return '';
+  }
+
+  const client = await connectWithRetry();
+
+  try {
+    await client.query('BEGIN');
+
+    await ensureProcessingSettingsTable(client);
+
+    const result = await client.query(
+      `
+        INSERT INTO processing_settings (id, additional_prompt, updated_at)
+        VALUES (1, $1, CURRENT_TIMESTAMP)
+        ON CONFLICT (id)
+        DO UPDATE SET additional_prompt = EXCLUDED.additional_prompt,
+                      updated_at = CURRENT_TIMESTAMP
+        RETURNING additional_prompt
+      `,
+      [prompt]
+    );
+
+    await client.query('COMMIT');
+
+    const row = (result.rows[0] ?? {}) as DbProcessingSettingsRow;
+    return row.additional_prompt ?? '';
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
 }

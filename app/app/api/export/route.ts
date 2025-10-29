@@ -19,6 +19,7 @@ const CSV_HEADER = [
   "サブカテゴリ",
   "金額",
   "支払方法",
+  "使用モデル",
 ];
 
 type ExportFormat = "json" | "csv" | "zip";
@@ -63,6 +64,7 @@ function buildCsv(receipts: Awaited<ReturnType<typeof getAllReceiptsWithItems>>)
           escapeCsvValue(item.subcategory ?? ""),
           escapeCsvValue(item.total_price ?? ""),
           escapeCsvValue(receipt.payment_method ?? ""),
+          escapeCsvValue(receipt.model_used ?? "gemini/gemini-2.5-flash"),
         ].join(","),
       );
     });
