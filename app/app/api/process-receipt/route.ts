@@ -114,6 +114,7 @@ function parseXmlToReceiptData(xmlData: string, filename: string, imagePath?: st
 export async function POST(request: NextRequest) {
   let file: File | null = null
   let imagePath: string | undefined = undefined
+  let fallbackUsed = false
   
   try {
     const formData = await request.formData()
@@ -190,6 +191,8 @@ export async function POST(request: NextRequest) {
 
     const harinaResult = await harinaResponse.json()
     console.log('HARINA result:', harinaResult)
+    fallbackUsed = harinaResult.fallbackUsed === true
+    const keyType = typeof harinaResult.keyType === 'string' ? harinaResult.keyType : undefined
 
     // HARINA APIのレスポンス形式をチェック
     if (!harinaResult.success) {
@@ -206,6 +209,8 @@ export async function POST(request: NextRequest) {
       // XMLをパースしてReceiptDataに変換
       receiptData = await parseXmlToReceiptData(xmlData, file.name, imagePath)
       receiptData.uploader = uploader; // 👈 パースしたデータにuploaderを追加
+      receiptData.fallbackUsed = fallbackUsed
+      receiptData.keyType = keyType
       console.log('Parsed receipt data:', receiptData)
     } catch (xmlError) {
       console.error('XML parsing error:', xmlError)
@@ -215,6 +220,8 @@ export async function POST(request: NextRequest) {
       try {
         receiptData = parseXmlWithRegex(xmlData, file.name, imagePath)
         receiptData.uploader = uploader; // 👈 こちらにも追加
+        receiptData.fallbackUsed = fallbackUsed
+        receiptData.keyType = keyType
         console.log('Regex-parsed receipt data:', receiptData)
       } catch (regexError) {
         console.error('Regex parsing also failed:', regexError)
@@ -236,7 +243,9 @@ export async function POST(request: NextRequest) {
           ],
           processed_at: new Date().toISOString(),
           image_path: imagePath || undefined,
-          uploader: uploader // 👈 ダミーデータにもuploaderを追加
+          uploader: uploader, // 👈 ダミーデータにもuploaderを追加
+          fallbackUsed,
+          keyType: keyType ?? 'primary'
         }
       }
     }
@@ -253,12 +262,16 @@ export async function POST(request: NextRequest) {
             ...existingReceipt,
             duplicate: true,
             duplicateOf: saveResult.id,
+            fallbackUsed,
+            keyType: keyType ?? existingReceipt.keyType,
           })
         }
         return NextResponse.json({
           ...receiptData,
           duplicate: true,
           duplicateOf: saveResult.id,
+          fallbackUsed,
+          keyType: keyType ?? receiptData.keyType,
         })
       }
     } catch (dbError) {
@@ -269,6 +282,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...receiptData,
       duplicate: false,
+      fallbackUsed,
+      keyType: keyType ?? receiptData.keyType,
     })
   } catch (error) {
     console.error('Receipt processing error:', error)
@@ -314,7 +329,9 @@ export async function POST(request: NextRequest) {
         ],
         processed_at: new Date().toISOString(),
         image_path: imagePath || undefined,
-        uploader: '夫' // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
+        uploader: '夫', // 👈 エラーハンドリング時のダミーデータにはデフォルト値を設定
+        fallbackUsed: false,
+        keyType: 'primary',
       }
       
       // データベースに保存を試行
@@ -328,6 +345,8 @@ export async function POST(request: NextRequest) {
               ...existingReceipt,
               duplicate: true,
               duplicateOf: saveResult.id,
+              fallbackUsed: false,
+              keyType: 'primary',
             })
           }
           dummyReceiptData.duplicate = true
@@ -341,6 +360,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         ...dummyReceiptData,
         duplicate: false,
+        fallbackUsed: false,
+        keyType: 'primary',
       })
     }
     

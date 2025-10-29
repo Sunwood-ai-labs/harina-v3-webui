@@ -89,6 +89,8 @@ def create_app() -> FastAPI:
         format: str
         model: str
         error: Optional[str] = None
+        fallbackUsed: Optional[bool] = None
+        keyType: Optional[str] = None
 
     class Base64Request(BaseModel):
         image_base64: str
@@ -176,7 +178,9 @@ def create_app() -> FastAPI:
                     success=True,
                     data=result,
                     format=format,
-                    model=model
+                    model=model,
+                    fallbackUsed=ocr.last_used_fallback,
+                    keyType=ocr.last_used_key_label
                 )
 
             finally:
@@ -226,7 +230,9 @@ def create_app() -> FastAPI:
                     success=True,
                     data=result,
                     format=request.format,
-                    model=request.model
+                    model=request.model,
+                    fallbackUsed=ocr.last_used_fallback,
+                    keyType=ocr.last_used_key_label
                 )
 
             finally:

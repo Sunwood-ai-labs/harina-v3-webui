@@ -27,4 +27,6 @@ export interface ReceiptData {
   image_path?: string
   duplicate?: boolean
   duplicateOf?: number
+  fallbackUsed?: boolean
+  keyType?: string
 }
