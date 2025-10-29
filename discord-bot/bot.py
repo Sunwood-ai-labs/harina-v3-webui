@@ -73,6 +73,27 @@ def build_result_message(payload: dict) -> str:
     if total is not None:
         lines.append(f"合計金額: {total}")
 
+    fallback_used = payload.get("fallbackUsed")
+    key_type = payload.get("keyType")
+
+    emoji = None
+    if fallback_used:
+        emoji = "🔁"
+    elif key_type == "free":
+        emoji = "🆓"
+    elif key_type == "primary":
+        emoji = "🔑"
+
+    if emoji:
+        lines[0] = f"{lines[0]} {emoji}"
+
+    if fallback_used:
+        lines.append("🔁 Gemini FREEキーから本命キーへスイッチして解析したよ！")
+    elif key_type == "free":
+        lines.append("🆓 Gemini FREEキーで解析したよ〜！")
+    elif key_type == "primary":
+        lines.append("🔑 Gemini 本命キーでしっかり処理したよ！")
+
     items = payload.get("items") or []
     if items:
         top_items = items[:5]
