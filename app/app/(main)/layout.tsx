@@ -10,11 +10,13 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
+  CopyCheck,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/receipts", label: "レシート一覧", icon: Receipt },
+  { href: "/duplicates", label: "重複チェック", icon: CopyCheck },
   { href: "/analytics", label: "分析・レポート", icon: BarChart3 },
   { href: "/settings", label: "設定", icon: SettingsIcon },
 ];
