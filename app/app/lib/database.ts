@@ -93,19 +93,56 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
+export interface SaveReceiptResult {
+  id: number;
+  wasDuplicate: boolean;
+}
+
+async function findDuplicateReceiptId(
+  client: PoolClient,
+  transactionDate?: string | null,
+  totalAmount?: number | null
+): Promise<number | null> {
+  if (!transactionDate || totalAmount === undefined || totalAmount === null) {
+    return null;
+  }
+
+  const duplicateQuery = await client.query<{ id: number }>(
+    `SELECT id FROM receipts
+     WHERE transaction_date = $1
+       AND total_amount = $2
+     ORDER BY processed_at DESC
+     LIMIT 1`,
+    [transactionDate, totalAmount]
+  );
+
+  return duplicateQuery.rows[0]?.id ?? null;
+}
+
 // レシートをデータベースに保存
 export async function saveReceiptToDatabase(
   receipt: ReceiptData
-): Promise<number> {
+): Promise<SaveReceiptResult> {
   // ビルド時はダミーIDを返す
   if (isBuildTime) {
-    return 1;
+    return { id: 1, wasDuplicate: false };
   }
 
   const client = await connectWithRetry();
 
   try {
     await client.query("BEGIN");
+
+    const duplicateId = await findDuplicateReceiptId(
+      client,
+      receipt.transaction_date,
+      receipt.total_amount ?? null
+    );
+
+    if (duplicateId) {
+      await client.query("ROLLBACK");
+      return { id: duplicateId, wasDuplicate: true };
+    }
 
     // レシート基本情報を保存
     const receiptResult = await client.query(
@@ -158,7 +195,7 @@ export async function saveReceiptToDatabase(
     }
 
     await client.query("COMMIT");
-    return receiptId;
+    return { id: receiptId, wasDuplicate: false };
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -620,6 +657,7 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
 
   let newReceiptsCount = 0;
   let newItemsCount = 0;
+  let duplicateReceiptsCount = 0;
 
   try {
     await client.query('BEGIN');
@@ -628,18 +666,29 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
       const items = receiptsByFilename[filename];
       const firstItem = items[0];
 
-      // 同じレシートが既に存在するか確認（店名と日付で簡易的に判断）
+      if (!firstItem) {
+        continue;
+      }
+
+      const transactionDate = firstItem.日付 ? firstItem.日付.trim() : null;
+      const transactionTime = firstItem.時間 ? firstItem.時間.trim() : null;
+      const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.金額) || 0), 0);
+
+      const duplicateId = await findDuplicateReceiptId(client, transactionDate, totalAmount);
+      if (duplicateId) {
+        duplicateReceiptsCount += 1;
+        continue;
+      }
+
+      // 同じレシートが既に存在するか（店名と日時で判断）
       const existingReceipt = await client.query(
         'SELECT id FROM receipts WHERE store_name = $1 AND transaction_date = $2 AND transaction_time = $3 LIMIT 1',
-        [firstItem.購入場所, firstItem.日付.trim(), firstItem.時間.trim()]
+        [firstItem.購入場所, transactionDate, transactionTime]
       );
 
       let receiptId;
 
       if (existingReceipt.rows.length === 0) {
-        // 新しいレシートを登録
-        const totalAmount = items.reduce((sum, item) => sum + (parseFloat(item.金額) || 0), 0);
-        
         const receiptResult = await client.query(
           `INSERT INTO receipts (
             filename, store_name, transaction_date, transaction_time,
@@ -649,8 +698,8 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
           [
             filename,
             firstItem.購入場所,
-            firstItem.日付.trim(),
-            firstItem.時間.trim(),
+            transactionDate,
+            transactionTime,
             totalAmount,
             firstItem.支払方法,
             firstItem.アップローダー,
@@ -687,7 +736,8 @@ export async function importReceiptsFromCsv(data: CsvRow[]) {
     
     return {
       newReceipts: newReceiptsCount,
-      newItems: newItemsCount
+      newItems: newItemsCount,
+      duplicatesSkipped: duplicateReceiptsCount,
     };
   } catch (error) {
     await client.query('ROLLBACK');
