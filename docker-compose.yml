@@ -32,6 +32,7 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY_FREE=${GEMINI_API_KEY_FREE}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DATABASE_URL=postgresql://receipt_user:receipt_password@postgres:5432/receipt_db
       - POSTGRES_HOST=postgres
