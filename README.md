@@ -56,7 +56,7 @@ Discordから画像をアップロードしたい場合は、`.env` にボット
 ```env
 DISCORD_BOT_TOKEN=your_discord_bot_token_here
 DISCORD_ALLOWED_CHANNEL_IDS=123456789012345678  # カンマ区切りで複数指定可
-DISCORD_RECEIPT_MODEL=gemini
+DISCORD_RECEIPT_MODEL=gemini/gemini-2.5-flash
 DISCORD_RECEIPT_UPLOADER=discord
 DISCORD_CHANNEL_UPLOADERS=v3_maki:maki,v3_yome:yome
 DISCORD_RECEIPT_BASE_URL=https://localhost
