@@ -57,12 +57,15 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 text-sm text-sumi-500 mb-2">
+            <div className="inline-flex flex-wrap items-center gap-2 text-sm text-sumi-500 mb-2">
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-washi-200 text-sumi-700 border border-washi-300">
                 ID: {receipt.id}
               </span>
               <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
                 {receipt.uploader || 'アップローダー不明'}
+              </span>
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                {receipt.model_used || 'gemini/gemini-2.5-flash'}
               </span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold text-sumi-900 tracking-tight">
@@ -114,6 +117,10 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
               <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
                 <dt className="text-sumi-500 text-xs uppercase tracking-wide">レシート番号</dt>
                 <dd className="mt-1 text-sumi-900 font-medium">{receipt.receipt_number || '未設定'}</dd>
+              </div>
+              <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
+                <dt className="text-sumi-500 text-xs uppercase tracking-wide">使用モデル</dt>
+                <dd className="mt-1 text-sumi-900 font-medium">{receipt.model_used || 'gemini/gemini-2.5-flash'}</dd>
               </div>
               <div className="p-4 rounded-2xl bg-washi-100 border border-washi-300">
                 <dt className="text-sumi-500 text-xs uppercase tracking-wide">店舗住所</dt>
