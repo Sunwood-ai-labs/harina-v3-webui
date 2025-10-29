@@ -101,6 +101,58 @@ async function ensureProcessingSettingsTable(client: PoolClient) {
   `);
 }
 
+let schemaEnsured = false;
+let schemaEnsuringPromise: Promise<void> | null = null;
+
+async function ensureModelUsedColumn(client: PoolClient) {
+  const columnExists = await client.query(
+    `SELECT 1
+       FROM information_schema.columns
+      WHERE table_name = 'receipts'
+        AND column_name = 'model_used'
+      LIMIT 1`
+  );
+
+  if (columnExists.rowCount === 0) {
+    const defaultModelLiteral = DEFAULT_MODEL.replace(/'/g, "''"); // escape single quotes for SQL literal
+
+    await client.query(
+      `ALTER TABLE receipts
+         ADD COLUMN model_used VARCHAR(100) DEFAULT '${defaultModelLiteral}'`
+    );
+  }
+
+  await client.query(
+    `UPDATE receipts
+        SET model_used = $1
+      WHERE model_used IS NULL OR model_used = ''`,
+    [DEFAULT_MODEL]
+  );
+}
+
+async function ensureDatabaseSchema(client: PoolClient) {
+  if (schemaEnsured) {
+    return;
+  }
+
+  if (!schemaEnsuringPromise) {
+    schemaEnsuringPromise = (async () => {
+      await ensureProcessingSettingsTable(client);
+      await ensureModelUsedColumn(client);
+      schemaEnsured = true;
+    })().finally(() => {
+      schemaEnsuringPromise = null;
+    });
+  }
+
+  try {
+    await schemaEnsuringPromise;
+  } catch (error) {
+    schemaEnsured = false;
+    throw error;
+  }
+}
+
 // PostgreSQL接続プール
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || "postgres",
@@ -262,6 +314,14 @@ async function connectWithRetry(maxRetries = 5, delay = 2000): Promise<any> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const client = await pool.connect();
+
+      try {
+        await ensureDatabaseSchema(client);
+      } catch (schemaError) {
+        client.release();
+        throw schemaError;
+      }
+
       return client;
     } catch (error) {
       console.log(
