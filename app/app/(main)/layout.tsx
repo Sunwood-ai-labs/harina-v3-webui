@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -11,9 +11,19 @@ import {
   Menu,
   X,
   CopyCheck,
+  Scan,
 } from "lucide-react";
 
-const NAV_ITEMS = [
+type NavIcon = ComponentType<{ size?: number | string }>;
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: NavIcon;
+  external?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/receipts", label: "レシート一覧", icon: Receipt },
   { href: "/duplicates", label: "重複チェック", icon: CopyCheck },
@@ -21,9 +31,36 @@ const NAV_ITEMS = [
   { href: "/settings", label: "設定", icon: SettingsIcon },
 ];
 
+const DISCORD_CHANNEL_URL = process.env.NEXT_PUBLIC_DISCORD_CHANNEL_URL;
+
 export default function MainLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const navItems: NavItem[] = DISCORD_CHANNEL_URL
+    ? [
+        ...NAV_ITEMS,
+        {
+          href: DISCORD_CHANNEL_URL,
+          label: "Discordチャンネル",
+          icon: Scan,
+          external: true,
+        },
+      ]
+    : NAV_ITEMS;
+  const ScanButton = ({ className = "" }: { className?: string }) => {
+    if (!DISCORD_CHANNEL_URL) return null;
+    return (
+      <a
+        href={DISCORD_CHANNEL_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-teal-600 ${className}`}
+      >
+        <Scan size={18} />
+        スキャン
+      </a>
+    );
+  };
 
   useEffect(() => {
     const listener = () => setIsSidebarOpen((prev) => !prev);
@@ -62,19 +99,32 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="flex-1 space-y-2">
-            {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href;
+            {navItems.map((item) => {
+              const isActive = !item.external && pathname === item.href;
               const Icon = item.icon;
+              const baseClass = `flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                isActive ? "bg-teal-500 text-white shadow" : "text-sumi-600 hover:bg-washi-200"
+              }`;
+
+              if (item.external) {
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${baseClass} hover:text-teal-600`}
+                  >
+                    <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/60 border border-washi-300">
+                      <Icon size={18} />
+                    </span>
+                    <span className="font-semibold text-sm">{item.label}</span>
+                  </a>
+                );
+              }
+
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
-                    isActive
-                      ? "bg-teal-500 text-white shadow"
-                      : "text-sumi-600 hover:bg-washi-200"
-                  }`}
-                >
+                <Link key={item.href} href={item.href} className={baseClass}>
                   <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/60 border border-washi-300">
                     <Icon size={18} />
                   </span>
@@ -87,6 +137,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           <div className="rounded-2xl border border-washi-300 bg-washi-200/60 px-4 py-3 text-xs text-sumi-600">
             <p className="font-semibold mb-1">今日のヒント</p>
             <p>Discordからアップロードしたレシートは、自動的にタグ付けされて検索が簡単になります。</p>
+            {DISCORD_CHANNEL_URL && (
+              <ScanButton className="mt-2 justify-center w-full" />
+            )}
           </div>
         </div>
       </aside>
@@ -109,6 +162,10 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <Menu size={18} />
           </button>
           <p className="text-sm font-semibold text-sumi-600">メニュー</p>
+          <ScanButton className="ml-auto" />
+        </div>
+        <div className="hidden lg:flex justify-end px-6 py-4">
+          <ScanButton />
         </div>
         <div>{children}</div>
       </div>

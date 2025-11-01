@@ -1,5 +1,13 @@
 import { Pool, PoolClient } from "pg";
-import { ReceiptData, ReceiptItem } from "../types";
+import {
+  AnalyticsSummary,
+  AnalyticsMonthlySummary,
+  AnalyticsYearlySummary,
+  AnalyticsUploaderBreakdown,
+  AnalyticsTopCategory,
+  ReceiptData,
+  ReceiptItem,
+} from "../types";
 
 // データベースから取得するレシートの型定義
 const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
@@ -83,6 +91,15 @@ interface DbDuplicateGroupRow {
 
 interface DbProcessingSettingsRow {
   additional_prompt: string;
+}
+
+interface AnalyticsAggregationRow {
+  year: number;
+  month?: number | null;
+  uploader: string;
+  category: string;
+  total_amount: string;
+  receipt_count: string;
 }
 
 async function ensureProcessingSettingsTable(client: PoolClient) {
@@ -300,7 +317,7 @@ export async function saveReceiptToDatabase(
 const isBuildTime = false; // 実行時は常にデータベースに接続を試行
 
 // データベース接続のリトライ機能
-async function connectWithRetry(maxRetries = 5, delay = 2000): Promise<any> {
+async function connectWithRetry(maxRetries = 5, delay = 2000): Promise<PoolClient> {
   // ビルド時はダミー接続を返す
   if (isBuildTime) {
     throw new Error("Database not available during build time");
@@ -332,6 +349,8 @@ async function connectWithRetry(maxRetries = 5, delay = 2000): Promise<any> {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
+
+  throw new Error("Failed to establish a database connection");
 }
 
 // データベースからレシート一覧を取得
@@ -731,6 +750,386 @@ export async function getDuplicateReceiptGroups(): Promise<DuplicateGroup[]> {
   } finally {
     client.release();
   }
+}
+
+export async function getAnalyticsSummary(year?: number): Promise<AnalyticsSummary> {
+  if (isBuildTime) {
+    return {
+      availableYears: [],
+      selectedYear: year ?? new Date().getFullYear(),
+      monthly: [],
+      yearly: [],
+      topCategoriesByUploader: [],
+      overallTopCategories: [],
+    };
+  }
+
+  const client = await connectWithRetry();
+
+  const buildTxnDate = `
+    CASE
+      WHEN r.transaction_date IS NOT NULL
+        AND r.transaction_date ~ '^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$'
+        AND to_char(to_date(r.transaction_date, 'YYYY-MM-DD'), 'YYYY-MM-DD') = r.transaction_date
+        THEN to_date(r.transaction_date, 'YYYY-MM-DD')
+      ELSE COALESCE(r.processed_at::date, CURRENT_DATE)
+    END
+  `;
+
+  const resolvedYearFallback = new Date().getFullYear();
+
+  try {
+    const yearsResult = await client.query<Pick<AnalyticsAggregationRow, 'year'>>(`
+      WITH receipt_dates AS (
+        SELECT ${buildTxnDate} AS txn_date
+        FROM receipts r
+      )
+      SELECT DISTINCT EXTRACT(YEAR FROM txn_date)::int AS year
+      FROM receipt_dates
+      WHERE txn_date IS NOT NULL
+      ORDER BY year DESC
+    `);
+
+    const availableYears = yearsResult.rows.map((row) => row.year).filter((value): value is number => Number.isFinite(value));
+    const defaultYear = availableYears.length > 0 ? availableYears[0] : resolvedYearFallback;
+    const resolvedYear = year && Number.isFinite(year) ? Number(year) : defaultYear;
+
+    const monthlyResult = await client.query<AnalyticsAggregationRow>(
+      `WITH base AS (
+         SELECT
+           r.id,
+           ${buildTxnDate} AS txn_date,
+           COALESCE(NULLIF(r.uploader, ''), '不明') AS uploader,
+           COALESCE(r.total_amount::numeric, 0) AS receipt_total
+         FROM receipts r
+       ),
+       item_amounts AS (
+         SELECT
+           b.id,
+           b.txn_date,
+           b.uploader,
+           COALESCE(NULLIF(ri.category, ''), '未分類') AS category,
+           COALESCE(ri.total_price::numeric, 0) AS amount
+         FROM base b
+         LEFT JOIN receipt_items ri ON ri.receipt_id = b.id
+       ),
+       normalized AS (
+         SELECT * FROM item_amounts
+         UNION ALL
+         SELECT
+           b.id,
+           b.txn_date,
+           b.uploader,
+           '未分類' AS category,
+           b.receipt_total AS amount
+         FROM base b
+         WHERE NOT EXISTS (SELECT 1 FROM receipt_items ri WHERE ri.receipt_id = b.id)
+       )
+       SELECT
+         EXTRACT(YEAR FROM txn_date)::int AS year,
+         EXTRACT(MONTH FROM txn_date)::int AS month,
+         uploader,
+         category,
+         SUM(amount) AS total_amount,
+         COUNT(DISTINCT id) AS receipt_count
+       FROM normalized
+       WHERE txn_date IS NOT NULL AND EXTRACT(YEAR FROM txn_date)::int = $1
+       GROUP BY year, month, uploader, category
+       ORDER BY year ASC, month ASC, uploader ASC, category ASC`,
+      [resolvedYear]
+    );
+
+    const yearlyResult = await client.query<AnalyticsAggregationRow>(
+      `WITH base AS (
+         SELECT
+           r.id,
+           ${buildTxnDate} AS txn_date,
+           COALESCE(NULLIF(r.uploader, ''), '不明') AS uploader,
+           COALESCE(r.total_amount::numeric, 0) AS receipt_total
+         FROM receipts r
+       ),
+       item_amounts AS (
+         SELECT
+           b.id,
+           b.txn_date,
+           b.uploader,
+           COALESCE(NULLIF(ri.category, ''), '未分類') AS category,
+           COALESCE(ri.total_price::numeric, 0) AS amount
+         FROM base b
+         LEFT JOIN receipt_items ri ON ri.receipt_id = b.id
+       ),
+       normalized AS (
+         SELECT * FROM item_amounts
+         UNION ALL
+         SELECT
+           b.id,
+           b.txn_date,
+           b.uploader,
+           '未分類' AS category,
+           b.receipt_total AS amount
+         FROM base b
+         WHERE NOT EXISTS (SELECT 1 FROM receipt_items ri WHERE ri.receipt_id = b.id)
+       )
+       SELECT
+         EXTRACT(YEAR FROM txn_date)::int AS year,
+         uploader,
+         category,
+         SUM(amount) AS total_amount,
+         COUNT(DISTINCT id) AS receipt_count
+       FROM normalized
+       WHERE txn_date IS NOT NULL
+       GROUP BY year, uploader, category
+       ORDER BY year ASC, uploader ASC, category ASC`
+    );
+
+    const monthlySummaries = aggregateMonthlySummaries(monthlyResult.rows);
+    const yearlySummaries = aggregateYearlySummaries(yearlyResult.rows);
+
+    const topCategories = computeTopCategories(monthlySummaries, yearlySummaries, resolvedYear);
+
+    return {
+      availableYears,
+      selectedYear: resolvedYear,
+      monthly: monthlySummaries,
+      yearly: yearlySummaries,
+      topCategoriesByUploader: topCategories.byUploader,
+      overallTopCategories: topCategories.overall,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+function aggregateMonthlySummaries(rows: AnalyticsAggregationRow[]): AnalyticsMonthlySummary[] {
+  const monthlyMap = new Map<string, { year: number; month: number; receiptCount: number; uploaderData: Map<string, { totalAmount: number; receiptCount: number; categories: Map<string, { totalAmount: number; receiptCount: number }> }>; }>();
+
+  rows.forEach((row) => {
+    if (!Number.isFinite(row.year) || !Number.isFinite(row.month ?? NaN)) {
+      return;
+    }
+
+    const year = Number(row.year);
+    const month = Number(row.month ?? 0);
+    const uploader = row.uploader ?? '不明';
+    const category = row.category ?? '未分類';
+    const totalAmount = Number(row.total_amount ?? 0) || 0;
+    const receiptCount = Number(row.receipt_count ?? 0) || 0;
+
+    const key = `${year}-${month}`;
+    if (!monthlyMap.has(key)) {
+      monthlyMap.set(key, {
+        year,
+        month,
+        receiptCount: 0,
+        uploaderData: new Map(),
+      });
+    }
+
+    const monthEntry = monthlyMap.get(key)!;
+    monthEntry.receiptCount += receiptCount;
+
+    if (!monthEntry.uploaderData.has(uploader)) {
+      monthEntry.uploaderData.set(uploader, {
+        totalAmount: 0,
+        receiptCount: 0,
+        categories: new Map(),
+      });
+    }
+
+    const uploaderEntry = monthEntry.uploaderData.get(uploader)!;
+    uploaderEntry.totalAmount += totalAmount;
+    uploaderEntry.receiptCount += receiptCount;
+
+    if (!uploaderEntry.categories.has(category)) {
+      uploaderEntry.categories.set(category, {
+        totalAmount: 0,
+        receiptCount: 0,
+      });
+    }
+
+    const categoryEntry = uploaderEntry.categories.get(category)!;
+    categoryEntry.totalAmount += totalAmount;
+    categoryEntry.receiptCount += receiptCount;
+  });
+
+  const monthlySummaries: AnalyticsMonthlySummary[] = [];
+
+  Array.from(monthlyMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([, value]) => {
+      const uploaderBreakdown: AnalyticsUploaderBreakdown[] = Array.from(value.uploaderData.entries()).map(([uploader, data]) => ({
+        uploader,
+        totalAmount: roundAmount(data.totalAmount),
+        receiptCount: data.receiptCount,
+        categories: Array.from(data.categories.entries())
+          .map(([category, catData]) => ({
+            category,
+            totalAmount: roundAmount(catData.totalAmount),
+            receiptCount: catData.receiptCount,
+          }))
+          .sort((a, b) => b.totalAmount - a.totalAmount),
+      }));
+
+      const totalAmount = uploaderBreakdown.reduce((acc, entry) => acc + entry.totalAmount, 0);
+
+      monthlySummaries.push({
+        year: value.year,
+        month: value.month,
+        label: `${value.year}年${value.month}月`,
+        totalAmount: roundAmount(totalAmount),
+        receiptCount: value.receiptCount,
+        uploaderBreakdown: uploaderBreakdown.sort((a, b) => b.totalAmount - a.totalAmount),
+      });
+    });
+
+  return monthlySummaries;
+}
+
+function aggregateYearlySummaries(rows: AnalyticsAggregationRow[]): AnalyticsYearlySummary[] {
+  const yearlyMap = new Map<number, { receiptCount: number; uploaderData: Map<string, { totalAmount: number; receiptCount: number; categories: Map<string, { totalAmount: number; receiptCount: number }> }>; }>();
+
+  rows.forEach((row) => {
+    if (!Number.isFinite(row.year)) {
+      return;
+    }
+
+    const year = Number(row.year);
+    const uploader = row.uploader ?? '不明';
+    const category = row.category ?? '未分類';
+    const totalAmount = Number(row.total_amount ?? 0) || 0;
+    const receiptCount = Number(row.receipt_count ?? 0) || 0;
+
+    if (!yearlyMap.has(year)) {
+      yearlyMap.set(year, {
+        receiptCount: 0,
+        uploaderData: new Map(),
+      });
+    }
+
+    const yearEntry = yearlyMap.get(year)!;
+    yearEntry.receiptCount += receiptCount;
+
+    if (!yearEntry.uploaderData.has(uploader)) {
+      yearEntry.uploaderData.set(uploader, {
+        totalAmount: 0,
+        receiptCount: 0,
+        categories: new Map(),
+      });
+    }
+
+    const uploaderEntry = yearEntry.uploaderData.get(uploader)!;
+    uploaderEntry.totalAmount += totalAmount;
+    uploaderEntry.receiptCount += receiptCount;
+
+    if (!uploaderEntry.categories.has(category)) {
+      uploaderEntry.categories.set(category, {
+        totalAmount: 0,
+        receiptCount: 0,
+      });
+    }
+
+    const categoryEntry = uploaderEntry.categories.get(category)!;
+    categoryEntry.totalAmount += totalAmount;
+    categoryEntry.receiptCount += receiptCount;
+  });
+
+  return Array.from(yearlyMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([year, value]) => {
+      const uploaderBreakdown: AnalyticsUploaderBreakdown[] = Array.from(value.uploaderData.entries()).map(([uploader, data]) => ({
+        uploader,
+        totalAmount: roundAmount(data.totalAmount),
+        receiptCount: data.receiptCount,
+        categories: Array.from(data.categories.entries())
+          .map(([category, catData]) => ({
+            category,
+            totalAmount: roundAmount(catData.totalAmount),
+            receiptCount: catData.receiptCount,
+          }))
+          .sort((a, b) => b.totalAmount - a.totalAmount),
+      }));
+
+      const totalAmount = uploaderBreakdown.reduce((acc, entry) => acc + entry.totalAmount, 0);
+
+      return {
+        year,
+        totalAmount: roundAmount(totalAmount),
+        receiptCount: value.receiptCount,
+        uploaderBreakdown: uploaderBreakdown.sort((a, b) => b.totalAmount - a.totalAmount),
+      };
+    });
+}
+
+function computeTopCategories(
+  monthly: AnalyticsMonthlySummary[],
+  yearly: AnalyticsYearlySummary[],
+  targetYear: number
+): { byUploader: AnalyticsTopCategory[]; overall: AnalyticsTopCategory[] } {
+  const byUploaderMap = new Map<string, Map<string, { totalAmount: number; receiptCount: number }>>();
+  const overallMap = new Map<string, { totalAmount: number; receiptCount: number }>();
+
+  monthly
+    .filter((entry) => entry.year === targetYear)
+    .forEach((entry) => {
+      entry.uploaderBreakdown.forEach((uploader) => {
+        if (!byUploaderMap.has(uploader.uploader)) {
+          byUploaderMap.set(uploader.uploader, new Map());
+        }
+        const categoryMap = byUploaderMap.get(uploader.uploader)!;
+
+        uploader.categories.forEach((category) => {
+          if (!categoryMap.has(category.category)) {
+            categoryMap.set(category.category, { totalAmount: 0, receiptCount: 0 });
+          }
+          const categoryEntry = categoryMap.get(category.category)!;
+          categoryEntry.totalAmount += category.totalAmount;
+          categoryEntry.receiptCount += category.receiptCount;
+
+          if (!overallMap.has(category.category)) {
+            overallMap.set(category.category, { totalAmount: 0, receiptCount: 0 });
+          }
+          const overallEntry = overallMap.get(category.category)!;
+          overallEntry.totalAmount += category.totalAmount;
+          overallEntry.receiptCount += category.receiptCount;
+        });
+      });
+    });
+
+  const byUploader: AnalyticsTopCategory[] = [];
+  Array.from(byUploaderMap.entries()).forEach(([uploader, categories]) => {
+    Array.from(categories.entries())
+      .sort((a, b) => b[1].totalAmount - a[1].totalAmount)
+      .slice(0, 5)
+      .forEach(([category, value]) => {
+        byUploader.push({
+          uploader,
+          category,
+          totalAmount: roundAmount(value.totalAmount),
+          receiptCount: value.receiptCount,
+          year: targetYear,
+        });
+      });
+  });
+
+  const overall: AnalyticsTopCategory[] = Array.from(overallMap.entries())
+    .sort((a, b) => b[1].totalAmount - a[1].totalAmount)
+    .slice(0, 5)
+    .map(([category, value]) => ({
+      uploader: 'All',
+      category,
+      totalAmount: roundAmount(value.totalAmount),
+      receiptCount: value.receiptCount,
+      year: targetYear,
+    }));
+
+  return {
+    byUploader,
+    overall,
+  };
+}
+
+function roundAmount(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
 }
 
 // データベース統計情報を取得

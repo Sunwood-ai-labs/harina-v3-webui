@@ -31,3 +31,51 @@ export interface ReceiptData {
   fallbackUsed?: boolean
   keyType?: string
 }
+
+export interface AnalyticsCategoryBreakdown {
+  category: string
+  totalAmount: number
+  receiptCount: number
+}
+
+export interface AnalyticsUploaderBreakdown {
+  uploader: string
+  totalAmount: number
+  receiptCount: number
+  categories: AnalyticsCategoryBreakdown[]
+}
+
+export interface AnalyticsMonthlySummary {
+  year: number
+  month: number
+  label: string
+  totalAmount: number
+  receiptCount: number
+  uploaderBreakdown: AnalyticsUploaderBreakdown[]
+}
+
+export interface AnalyticsYearlySummary {
+  year: number
+  totalAmount: number
+  receiptCount: number
+  uploaderBreakdown: AnalyticsUploaderBreakdown[]
+}
+
+export interface AnalyticsTopCategory {
+  uploader: string
+  category: string
+  totalAmount: number
+  receiptCount: number
+  year: number
+}
+
+export interface AnalyticsSummaryResponse {
+  availableYears: number[]
+  selectedYear: number
+  monthly: AnalyticsMonthlySummary[]
+  yearly: AnalyticsYearlySummary[]
+  topCategoriesByUploader: AnalyticsTopCategory[]
+  overallTopCategories: AnalyticsTopCategory[]
+}
+
+export type AnalyticsSummary = AnalyticsSummaryResponse

@@ -9,9 +9,7 @@ import {
   FileText,
   Menu,
   Download,
-  Upload,
-  Camera,
-  Plus,
+  Scan,
   Trash2,
   CheckSquare,
   Square,
@@ -22,9 +20,6 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 
-import ReceiptUpload from "../../components/ReceiptUpload";
-import CameraCapture from "../../components/CameraCapture";
-import UploaderSelector from "../../components/UploaderSelector";
 import { ReceiptData } from "../../types";
 import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryStyles";
 import { ALL_CATEGORIES, getSubcategoriesForCategory } from "../../utils/categoryCatalog";
@@ -53,6 +48,7 @@ const DEFAULT_FILTERS: FiltersState = {
 
 const FILTER_STORAGE_KEY = "harina.receipts.filters.v1";
 const DEFAULT_MODEL = "gemini/gemini-2.5-flash";
+const DISCORD_CHANNEL_URL = process.env.NEXT_PUBLIC_DISCORD_CHANNEL_URL;
 
 const filtersAreActive = (filters: FiltersState) =>
   Boolean(
@@ -112,8 +108,6 @@ export default function ReceiptsPage() {
     userStats: [],
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [showFabPop, setShowFabPop] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const [processingSteps, setProcessingSteps] = useState(1);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMessage, setProcessingMessage] = useState("");
@@ -440,7 +434,6 @@ export default function ReceiptsPage() {
   const handleFileUpload = async (files: File | File[]) => {
     const fileArray = Array.isArray(files) ? files : [files];
 
-    setShowFabPop(false);
     setIsProcessing(true);
     setProcessingSteps(1);
     setProcessingMessage(`${fileArray.length}件のファイルをアップロード中...`);
@@ -489,7 +482,6 @@ export default function ReceiptsPage() {
   };
 
   const handleCsvUpload = async (file: File) => {
-    setShowFabPop(false);
     setIsProcessing(true);
     setProcessingSteps(1);
     setProcessingMessage("CSVをアップロード中...");
@@ -758,6 +750,18 @@ export default function ReceiptsPage() {
               )}
             </div>
 
+            {DISCORD_CHANNEL_URL && (
+              <a
+                href={DISCORD_CHANNEL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 text-white shadow hover:bg-teal-600"
+              >
+                <Scan size={18} />
+                スキャン
+              </a>
+            )}
+
             <button
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-washi-300 ${
                 selectionMode ? "bg-sumi-900 text-white border-sumi-900" : "bg-white text-sumi-700 hover:bg-washi-100"
@@ -768,13 +772,6 @@ export default function ReceiptsPage() {
               {selectionMode ? "選択モード終了" : "一括選択"}
             </button>
 
-            <button
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 text-white shadow-sm hover:bg-teal-600"
-              onClick={() => setShowFabPop((prev) => !prev)}
-            >
-              <Upload size={16} />
-              レシートを追加
-            </button>
           </div>
         </div>
         {(showFilters || hasActiveFilters) && (
@@ -1108,15 +1105,8 @@ export default function ReceiptsPage() {
         </section>
 
         <section>
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4">
             <h2 className="text-lg font-bold text-sumi-900">レシート一覧</h2>
-            <button
-              className="inline-flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700"
-              onClick={() => setShowFabPop(true)}
-            >
-              <Plus size={16} />
-              レシートを追加
-            </button>
           </div>
 
           {isLoading ? (
@@ -1216,76 +1206,6 @@ export default function ReceiptsPage() {
         </section>
       </main>
 
-      {showFabPop && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4"
-          onClick={() => setShowFabPop(false)}
-        >
-          <div
-            className="max-w-sm w-full bg-white rounded-3xl border border-washi-300 shadow-xl p-6 space-y-4"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold text-sumi-900">レシートを追加</h3>
-            <p className="text-sm text-sumi-500">
-              解析したいレシート画像をアップロードするか、カメラで撮影してください。
-            </p>
-
-            <div className="grid gap-3">
-              <button
-                className="flex items-center gap-3 p-3 border border-washi-300 rounded-2xl hover:border-teal-300 hover:bg-teal-50 text-sumi-700"
-                onClick={() => {
-                  setShowFabPop(false);
-                  setShowCamera(true);
-                }}
-              >
-                <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-teal-100 text-teal-600">
-                  <Camera size={18} />
-                </span>
-                <span>スマホのカメラで撮影する</span>
-              </button>
-
-              <ReceiptUpload onUpload={handleFileUpload} />
-
-              <div
-                className="flex items-center gap-3 p-3 border border-dashed border-teal-200 rounded-2xl bg-teal-50 text-teal-700 cursor-pointer hover:bg-teal-100"
-                onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".csv";
-                  input.onchange = (event) => {
-                    const file = (event.target as HTMLInputElement).files?.[0];
-                    if (file) handleCsvUpload(file);
-                  };
-                  input.click();
-                }}
-              >
-                <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-white text-teal-600 border border-teal-200">
-                  <Upload size={18} />
-                </span>
-                <span>CSVをインポートする</span>
-              </div>
-            </div>
-
-            <div className="grid gap-3">
-              <h4 className="text-sm font-semibold text-sumi-600">アップロード者</h4>
-              <UploaderSelector
-                selectedUploader={selectedUploader}
-                setSelectedUploader={setSelectedUploader}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCamera && (
-        <CameraCapture
-          onCapture={(file) => {
-            handleFileUpload(file);
-            setShowCamera(false);
-          }}
-          onClose={() => setShowCamera(false)}
-        />
-      )}
-
       {isProcessing && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl border border-washi-300 shadow-xl p-8 max-w-md w-full space-y-6 text-center">
@@ -1298,13 +1218,6 @@ export default function ReceiptsPage() {
         </div>
       )}
 
-      <button
-        className="fixed bottom-6 right-6 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-teal-500 text-white shadow-xl hover:bg-teal-600 lg:hidden"
-        onClick={() => setShowFabPop((prev) => !prev)}
-        aria-label="レシートを追加"
-      >
-        <Plus size={22} />
-      </button>
     </div>
   );
 }
