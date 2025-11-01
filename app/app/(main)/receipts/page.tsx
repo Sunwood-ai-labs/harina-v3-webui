@@ -9,7 +9,6 @@ import {
   FileText,
   Menu,
   Download,
-  Scan,
   Trash2,
   CheckSquare,
   Square,
@@ -749,18 +748,6 @@ export default function ReceiptsPage() {
                 </div>
               )}
             </div>
-
-            {DISCORD_CHANNEL_URL && (
-              <a
-                href={DISCORD_CHANNEL_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-teal-500 text-white shadow hover:bg-teal-600"
-              >
-                <Scan size={18} />
-                スキャン
-              </a>
-            )}
 
             <button
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-washi-300 ${

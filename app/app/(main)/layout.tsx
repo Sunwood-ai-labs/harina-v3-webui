@@ -31,7 +31,11 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "設定", icon: SettingsIcon },
 ];
 
-const DISCORD_CHANNEL_URL = process.env.NEXT_PUBLIC_DISCORD_CHANNEL_URL;
+const DEFAULT_DISCORD_CHANNEL_URL =
+  "https://discord.com/channels/1208743618345435226/1432639380522143754";
+
+const DISCORD_CHANNEL_URL =
+  process.env.NEXT_PUBLIC_DISCORD_CHANNEL_URL || DEFAULT_DISCORD_CHANNEL_URL;
 
 export default function MainLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -55,8 +59,24 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         target="_blank"
         rel="noopener noreferrer"
         className={`inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-teal-600 ${className}`}
+        aria-label="Discordでスキャンする"
       >
         <Scan size={18} />
+        スキャン
+      </a>
+    );
+  };
+  const FloatingScanButton = () => {
+    if (!DISCORD_CHANNEL_URL) return null;
+    return (
+      <a
+        href={DISCORD_CHANNEL_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 inline-flex items-center gap-2 rounded-full bg-teal-500 px-5 py-3 text-base font-bold text-white shadow-2xl hover:bg-teal-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        aria-label="Discordでスキャンする"
+      >
+        <Scan size={22} />
         スキャン
       </a>
     );
@@ -162,12 +182,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <Menu size={18} />
           </button>
           <p className="text-sm font-semibold text-sumi-600">メニュー</p>
-          <ScanButton className="ml-auto" />
-        </div>
-        <div className="hidden lg:flex justify-end px-6 py-4">
-          <ScanButton />
         </div>
         <div>{children}</div>
+        <FloatingScanButton />
       </div>
     </div>
   );
