@@ -184,7 +184,11 @@ export default async function ReceiptDetailPage({ params }: ReceiptDetailPagePro
             <h2 className="text-lg font-semibold text-sumi-900">購入商品</h2>
             <span className="text-sm text-sumi-500">{receipt.items?.length || 0} 件</span>
           </div>
-          <ReceiptItemsTable items={receipt.items ?? []} />
+          <ReceiptItemsTable
+            receiptId={receipt.id ?? 0}
+            initialReceipt={receipt}
+            items={receipt.items ?? []}
+          />
         </section>
       </div>
     </main>

@@ -1,13 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { Loader2, RotateCcw, Save } from 'lucide-react'
-import { ReceiptItem } from '../../types'
+import { AlertCircle, Loader2, RotateCcw, Save, Sparkles } from 'lucide-react'
+import { ReceiptData, ReceiptItem } from '../../types'
 import { getCategoryBadgeClasses, getCategoryLabel } from '../../utils/categoryStyles'
 import { ALL_CATEGORIES, getSubcategoriesForCategory } from '../../utils/categoryCatalog'
+import { buildReceiptDiffEntries, type ReceiptDiffEntry } from '../utils/receiptDiff'
 
 interface ReceiptItemsTableProps {
+  receiptId: number
+  initialReceipt: ReceiptData
   items: ReceiptItem[]
 }
 
@@ -17,18 +21,90 @@ type ItemRowState = ReceiptItem & {
   isSaving: boolean
 }
 
-export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
-  const [rows, setRows] = useState<ItemRowState[]>(() =>
-    items.map(item => ({
-      ...item,
-      draftCategory: item.category ?? '',
-      draftSubcategory: item.subcategory ?? '',
-      isSaving: false,
-    }))
-  )
+const mapItemsToRows = (itemList: ReceiptItem[]): ItemRowState[] =>
+  itemList.map(item => ({
+    ...item,
+    draftCategory: item.category ?? '',
+    draftSubcategory: item.subcategory ?? '',
+    isSaving: false,
+  }))
+
+export default function ReceiptItemsTable({ items, receiptId, initialReceipt }: ReceiptItemsTableProps) {
+  const reprocessSteps = [
+    {
+      label: '画像を準備中',
+      description: '過去のアップロード画像を引っ張ってくるよ',
+    },
+    {
+      label: 'AIが解析中',
+      description: 'HARINAが最新プロンプトで再読込してる〜',
+    },
+    {
+      label: '結果を保存中',
+      description: 'データベースに反映してUIを更新してるよ',
+    },
+  ]
+  const stepDurations = [4, 9, 3] // seconds per step (rough estimate)
+  const expectedTotalSeconds = stepDurations.reduce((sum, value) => sum + value, 0)
+  const [rows, setRows] = useState<ItemRowState[]>(() => mapItemsToRows(items))
   const [bulkCategory, setBulkCategory] = useState('')
   const [bulkSubcategory, setBulkSubcategory] = useState('')
   const [isBulkSaving, setIsBulkSaving] = useState(false)
+  const [isReprocessing, setIsReprocessing] = useState(false)
+  const [isReprocessModalOpen, setIsReprocessModalOpen] = useState(false)
+  const [reprocessStep, setReprocessStep] = useState(0)
+  const [reprocessError, setReprocessError] = useState<string | null>(null)
+  const [isReprocessComplete, setIsReprocessComplete] = useState(false)
+  const [reprocessStartAt, setReprocessStartAt] = useState<number | null>(null)
+  const [reprocessElapsedMs, setReprocessElapsedMs] = useState(0)
+  const [currentReceipt, setCurrentReceipt] = useState<ReceiptData>(initialReceipt)
+  const [diffEntries, setDiffEntries] = useState<ReceiptDiffEntry[]>([])
+  const router = useRouter()
+
+  const elapsedSeconds = reprocessStartAt ? Math.max(0, reprocessElapsedMs / 1000) : 0
+
+  const minimumProgress = reprocessSteps.length > 0
+    ? Math.min(reprocessStep, reprocessSteps.length) / reprocessSteps.length
+    : 0
+
+  let progressValue = reprocessError ? 1 : minimumProgress
+  if (!reprocessError && reprocessStartAt) {
+    const cumulativeDurations = stepDurations.reduce<number[]>((acc, duration, index) => {
+      const previous = acc[index - 1] ?? 0
+      acc.push(previous + duration)
+      return acc
+    }, [])
+    const currentStepIndex = Math.min(reprocessStep, reprocessSteps.length - 1)
+    const completedSeconds = cumulativeDurations[currentStepIndex - 1] ?? 0
+    const currentDuration = stepDurations[currentStepIndex] ?? stepDurations.at(-1) ?? 1
+    const raw = (Math.min(elapsedSeconds, completedSeconds + currentDuration)) / expectedTotalSeconds
+    progressValue = Math.max(minimumProgress, Math.min(1, raw))
+  }
+
+  const progressPercent = Math.round(progressValue * 100)
+  const remainingSeconds = reprocessError
+    ? 0
+    : Math.max(0, Math.ceil(expectedTotalSeconds - elapsedSeconds))
+
+useEffect(() => {
+  if (!isReprocessModalOpen) {
+    setReprocessElapsedMs(0)
+    return
+  }
+
+    const interval = window.setInterval(() => {
+      setReprocessElapsedMs(reprocessStartAt ? Date.now() - reprocessStartAt : 0)
+    }, 300)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+}, [isReprocessModalOpen, reprocessStartAt])
+
+useEffect(() => {
+  setCurrentReceipt(initialReceipt)
+  setRows(mapItemsToRows(initialReceipt.items ?? items))
+}, [initialReceipt, items])
 
   const suggestedCategories = useMemo(() => {
     const set = new Set<string>(ALL_CATEGORIES)
@@ -262,6 +338,74 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
     }
   }
 
+  const handleRefreshRows = (updatedItems: ReceiptItem[]) => {
+    setRows(mapItemsToRows(updatedItems))
+  }
+
+  const handleReprocess = async () => {
+    const advanceStep = (step: number) => setReprocessStep(step)
+    setDiffEntries([])
+    setIsReprocessComplete(false)
+    setReprocessError(null)
+    setIsReprocessModalOpen(true)
+    advanceStep(0)
+    setReprocessStartAt(Date.now())
+    setIsReprocessing(true)
+    try {
+      advanceStep(1)
+      const response = await fetch(`/api/receipts/${receiptId}/reprocess`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        throw new Error(errorBody?.error || 'レシートの再解析に失敗しました')
+      }
+
+      advanceStep(2)
+      const result = await response.json()
+      const refreshedReceipt: ReceiptData | undefined = result?.receipt
+
+      const previousReceipt = currentReceipt
+      if (refreshedReceipt?.items) {
+        handleRefreshRows(refreshedReceipt.items)
+      }
+      if (refreshedReceipt) {
+        setCurrentReceipt(refreshedReceipt)
+        const diffs = buildReceiptDiffEntries(previousReceipt, refreshedReceipt)
+        setDiffEntries(diffs)
+      } else {
+        setDiffEntries([])
+      }
+      setIsReprocessComplete(true)
+
+      toast.success('レシートを再解析したよ！最新のAI結果を反映したからチェックしてね💖')
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to reprocess receipt:', error)
+      const message = error instanceof Error ? error.message : 'レシートの再解析に失敗しました'
+      setReprocessError(message)
+      toast.error(message)
+      setDiffEntries([])
+      setIsReprocessComplete(false)
+    } finally {
+      setIsReprocessing(false)
+    }
+  }
+
+  const handleModalClose = () => {
+    if (isReprocessing && !reprocessError) {
+      return
+    }
+    setIsReprocessModalOpen(false)
+    setReprocessError(null)
+    setDiffEntries([])
+    setIsReprocessComplete(false)
+    setReprocessElapsedMs(0)
+    setReprocessStartAt(null)
+    setReprocessStep(0)
+  }
+
   if (rows.length === 0) {
     return (
       <div className="px-6 py-12 text-center text-sm text-sumi-500">
@@ -272,6 +416,123 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
 
   return (
     <div className="overflow-hidden">
+      {isReprocessModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 backdrop-blur-sm px-4">
+          <div className="w-full max-w-md rounded-3xl border border-washi-300 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sumi-500">AI Reprocess</p>
+                <h3 className="text-xl font-bold text-sumi-900">レシートを再解析中…</h3>
+                <div className="mt-2 space-y-1 text-sm text-sumi-500">
+                  <p>ちょっと待ってね！最新ロジックで帳尻合わせ中だよ。</p>
+                  {!reprocessError && (
+                    <p className="text-xs text-sumi-400">
+                      進捗 {progressPercent}% ・推定残り {remainingSeconds} 秒
+                    </p>
+                  )}
+                  {reprocessError && (
+                    <p className="text-xs text-rose-500">エラーが発生したので途中でストップしたよ</p>
+                  )}
+                </div>
+              </div>
+              <div className="rounded-2xl bg-indigo-50 p-3 text-indigo-600">
+                {reprocessError ? <AlertCircle className="h-6 w-6" /> : <Sparkles className="h-6 w-6 animate-pulse" />}
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-washi-200">
+                <div
+                  className={`h-2 rounded-full transition-all duration-500 ${reprocessError ? 'bg-rose-500' : 'bg-indigo-500'}`}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <ul className="space-y-2">
+                {reprocessSteps.map((step, index) => {
+                  const isActive = index === reprocessStep && !reprocessError
+                  const isDone = index < reprocessStep && !reprocessError
+                  const isError = reprocessError && index === reprocessStep
+                  return (
+                    <li
+                      key={step.label}
+                      className={`rounded-2xl border px-3 py-2 text-sm ${
+                        isError
+                          ? 'border-rose-200 bg-rose-50 text-rose-600'
+                          : isActive
+                          ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                          : isDone
+                          ? 'border-teal-200 bg-teal-50 text-teal-700'
+                          : 'border-washi-200 bg-washi-100 text-sumi-500'
+                      }`}
+                    >
+                      <p className="font-semibold">{step.label}</p>
+                      <p className="text-xs">{step.description}</p>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {isReprocessComplete && (
+                <div className="rounded-2xl border border-teal-200 bg-teal-50/60 px-3 py-3">
+                  <p className="text-xs font-semibold text-teal-700">差分プレビュー</p>
+                  {diffEntries.length > 0 ? (
+                    <ul className="mt-2 space-y-2">
+                      {diffEntries.map(diff => (
+                        <li key={diff.label} className="rounded-xl bg-white px-3 py-2 text-xs text-sumi-600 shadow-sm">
+                          <p className="font-semibold text-sumi-700">{diff.label}</p>
+                          <div className="mt-1 grid grid-cols-2 gap-2 text-[11px]">
+                            <div className="rounded-lg border border-washi-200 bg-washi-100 px-2 py-1">
+                              <span className="block text-[10px] font-semibold text-sumi-500">Before</span>
+                              <span className="block text-sumi-700">{diff.before}</span>
+                            </div>
+                            <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1">
+                              <span className="block text-[10px] font-semibold text-indigo-500">After</span>
+                              <span className="block text-indigo-700">{diff.after}</span>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-xs text-sumi-500">変更点はありませんでした。</p>
+                  )}
+                </div>
+              )}
+
+              {reprocessError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                  {reprocessError}
+                </div>
+              ) : (
+                <p className="text-xs text-sumi-400">
+                  解析が終わったら変更点をチェックして閉じてね！
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleModalClose}
+                  disabled={isReprocessing && !reprocessError}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-washi-300 bg-white px-4 py-2 text-sm font-semibold text-sumi-600 hover:bg-washi-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {(isReprocessing && !reprocessError) ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      解析中…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      閉じる
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-end justify-between gap-3 px-4 pb-4">
         <div className="flex flex-wrap gap-3">
           <div className="flex flex-col gap-1">
@@ -328,6 +589,15 @@ export default function ReceiptItemsTable({ items }: ReceiptItemsTableProps) {
           >
             {isBulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
             一括保存
+          </button>
+          <button
+            type="button"
+            onClick={handleReprocess}
+            disabled={isBulkSaving || isReprocessing}
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isReprocessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles size={16} />}
+            AI再解析
           </button>
         </div>
       </div>

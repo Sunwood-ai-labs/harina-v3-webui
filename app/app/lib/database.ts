@@ -580,6 +580,95 @@ export async function updateReceiptItem(
   }
 }
 
+export async function overwriteReceiptData(
+  receiptId: number,
+  data: ReceiptData
+): Promise<void> {
+  if (isBuildTime) {
+    throw new Error("Updates are not available during build time");
+  }
+
+  const client = await connectWithRetry();
+  const items = data.items ?? [];
+  const processedAt = data.processed_at ?? new Date().toISOString();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `UPDATE receipts SET
+        filename = $1,
+        store_name = $2,
+        store_address = $3,
+        store_phone = $4,
+        transaction_date = $5,
+        transaction_time = $6,
+        receipt_number = $7,
+        subtotal = $8,
+        tax = $9,
+        total_amount = $10,
+        payment_method = $11,
+        uploader = $12,
+        processed_at = $13,
+        image_path = $14,
+        model_used = $15
+      WHERE id = $16`,
+      [
+        data.filename ?? "",
+        data.store_name ?? null,
+        data.store_address ?? null,
+        data.store_phone ?? null,
+        data.transaction_date ?? null,
+        data.transaction_time ?? null,
+        data.receipt_number ?? null,
+        data.subtotal ?? 0,
+        data.tax ?? 0,
+        data.total_amount ?? 0,
+        data.payment_method ?? null,
+        data.uploader ?? "夫",
+        processedAt,
+        data.image_path ?? null,
+        data.model_used ?? DEFAULT_MODEL,
+        receiptId,
+      ]
+    );
+
+    await client.query("DELETE FROM receipt_items WHERE receipt_id = $1", [receiptId]);
+
+    if (items.length > 0) {
+      for (const item of items) {
+        await client.query(
+          `INSERT INTO receipt_items (
+            receipt_id,
+            name,
+            category,
+            subcategory,
+            quantity,
+            unit_price,
+            total_price
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            receiptId,
+            item.name,
+            item.category,
+            item.subcategory,
+            item.quantity ?? 1,
+            item.unit_price ?? 0,
+            item.total_price ?? 0,
+          ]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function bulkUpdateReceiptItemsByReceiptIds(
   receiptIds: number[],
   updates: { category?: string | null; subcategory?: string | null }

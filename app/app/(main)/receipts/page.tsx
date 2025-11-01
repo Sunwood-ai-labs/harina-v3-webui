@@ -16,12 +16,14 @@ import {
   SlidersHorizontal,
   Save,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
 import { ReceiptData } from "../../types";
 import { getCategoryBadgeClasses, getCategoryLabel } from "../../utils/categoryStyles";
 import { ALL_CATEGORIES, getSubcategoriesForCategory } from "../../utils/categoryCatalog";
+import { buildReceiptDiffEntries, type ReceiptDiffEntry } from "../../receipts/utils/receiptDiff";
 
 type ExportFormat = "csv" | "json" | "zip";
 
@@ -79,6 +81,13 @@ interface StatsState {
   userStats: { uploader: string; totalAmount: number; receiptCount: number }[];
 }
 
+interface BulkReprocessEntry {
+  id: number;
+  storeName: string;
+  diffs: ReceiptDiffEntry[];
+  error?: string;
+}
+
 export default function ReceiptsPage() {
   const router = useRouter();
   const readStoredFilters = (): FiltersState => {
@@ -118,6 +127,149 @@ export default function ReceiptsPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBulkReprocessing, setIsBulkReprocessing] = useState(false);
+  const [isBulkReprocessModalOpen, setBulkReprocessModalOpen] = useState(false);
+  const [bulkReprocessStatus, setBulkReprocessStatus] = useState<"idle" | "running" | "done">("idle");
+  const [bulkReprocessTotal, setBulkReprocessTotal] = useState(0);
+  const [bulkReprocessCurrentIndex, setBulkReprocessCurrentIndex] = useState(0);
+  const [bulkReprocessEntries, setBulkReprocessEntries] = useState<BulkReprocessEntry[]>([]);
+  const [bulkReprocessActiveReceipt, setBulkReprocessActiveReceipt] = useState("");
+  const isBulkReprocessRunning = bulkReprocessStatus === "running";
+  const bulkProcessedCount = Math.min(bulkReprocessCurrentIndex, bulkReprocessTotal);
+  const bulkProgressPercent =
+    bulkReprocessTotal === 0 ? 0 : Math.round((bulkProcessedCount / bulkReprocessTotal) * 100);
+  const bulkReprocessSummary =
+    bulkReprocessStatus === "running"
+      ? `${bulkProcessedCount}/${bulkReprocessTotal} 件完了`
+      : `${bulkReprocessTotal} 件のレシートを処理しました`;
+
+  const bulkReprocessModal = !isBulkReprocessModalOpen ? null : (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm px-4">
+      <div className="w-full max-w-3xl rounded-3xl border border-washi-300 bg-white p-6 shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-sumi-500">
+              Bulk AI Reprocess
+            </p>
+            <h3 className="text-xl font-bold text-sumi-900">
+              {isBulkReprocessRunning ? "レシートを再解析中…" : "再解析の結果"}
+            </h3>
+            <p className="mt-2 text-sm text-sumi-500">{bulkReprocessSummary}</p>
+            {isBulkReprocessRunning && bulkReprocessActiveReceipt && (
+              <p className="mt-1 text-xs text-sumi-400">処理中: {bulkReprocessActiveReceipt}</p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleBulkReprocessClose}
+            disabled={isBulkReprocessRunning}
+            className="inline-flex items-center gap-2 rounded-xl border border-washi-300 bg-white px-4 py-2 text-sm font-semibold text-sumi-600 hover:bg-washi-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isBulkReprocessRunning ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                処理中…
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                閉じる
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-washi-200">
+            <div
+              className={`h-2 rounded-full transition-all duration-500 ${
+                isBulkReprocessRunning ? "bg-indigo-500" : "bg-teal-500"
+              }`}
+              style={{ width: `${bulkProgressPercent}%` }}
+            />
+          </div>
+
+          <div className="rounded-2xl border border-washi-200 bg-washi-100/70 px-4 py-3 text-xs text-sumi-500">
+            {isBulkReprocessRunning ? (
+              <p>AIが順番に解析してるよ。しばらく待ってね！</p>
+            ) : (
+              <p>差分を確認して問題なければこのウィンドウを閉じてね。</p>
+            )}
+          </div>
+
+          <div className="max-h-96 overflow-y-auto space-y-3 pr-1">
+            {bulkReprocessEntries.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-washi-300 bg-white px-4 py-8 text-center text-sm text-sumi-400">
+                {isBulkReprocessRunning ? "再解析の結果を集計中…" : "差分はありませんでした。"}
+              </div>
+            )}
+
+            {bulkReprocessEntries.map((entry) => (
+              <div
+                key={`bulk-diff-${entry.id}`}
+                className="rounded-2xl border border-washi-300 bg-white px-4 py-3 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-sumi-900">
+                      #{entry.id} {entry.storeName || ""}
+                    </p>
+                    <p className="text-[11px] text-sumi-400">
+                      {entry.error
+                        ? "エラー"
+                        : entry.diffs.length > 0
+                        ? `${entry.diffs.length} 件の変更`
+                        : "差分なし"}
+                    </p>
+                  </div>
+                  {entry.error ? (
+                    <span className="rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold text-rose-600">
+                      Failed
+                    </span>
+                  ) : entry.diffs.length > 0 ? (
+                    <span className="rounded-full bg-indigo-100 px-2 py-1 text-[11px] font-semibold text-indigo-700">
+                      Updated
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-washi-200 px-2 py-1 text-[11px] font-semibold text-sumi-500">
+                      No Change
+                    </span>
+                  )}
+                </div>
+
+                {entry.error ? (
+                  <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                    {entry.error}
+                  </p>
+                ) : entry.diffs.length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {entry.diffs.map((diff) => (
+                      <li
+                        key={`${entry.id}-${diff.label}`}
+                        className="rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs text-sumi-700"
+                      >
+                        <p className="font-semibold text-indigo-700">{diff.label}</p>
+                        <div className="mt-1 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="rounded-lg border border-washi-200 bg-white px-2 py-1">
+                            <span className="block text-[10px] font-semibold text-sumi-500">Before</span>
+                            <span className="block">{diff.before}</span>
+                          </div>
+                          <div className="rounded-lg border border-indigo-200 bg-indigo-100 px-2 py-1">
+                            <span className="block text-[10px] font-semibold text-indigo-500">After</span>
+                            <span className="block text-indigo-700">{diff.after}</span>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
   const [filters, setFilters] = useState<FiltersState>({ ...DEFAULT_FILTERS });
   const [showFilters, setShowFilters] = useState(false);
   const [listBulkCategory, setListBulkCategory] = useState("");
@@ -430,6 +582,123 @@ export default function ReceiptsPage() {
     }
   };
 
+  const handleBulkReprocess = async () => {
+    if (selectedIds.length === 0) {
+      toast.info("再解析したいレシートを選択してね");
+      return;
+    }
+
+    const ids = [...selectedIds];
+    const previousMap = new Map<number, ReceiptData>();
+    receipts.forEach((receipt) => {
+      if (receipt.id) {
+        previousMap.set(receipt.id, receipt);
+      }
+    });
+
+    setBulkReprocessEntries([]);
+    setBulkReprocessModalOpen(true);
+    setBulkReprocessStatus("running");
+    setBulkReprocessTotal(ids.length);
+    setBulkReprocessCurrentIndex(0);
+    setBulkReprocessActiveReceipt("");
+    setIsBulkReprocessing(true);
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (let index = 0; index < ids.length; index += 1) {
+      const id = ids[index];
+      setBulkReprocessCurrentIndex(index);
+
+      const previous = previousMap.get(id);
+      const label = previous?.store_name ?? `#${id}`;
+      setBulkReprocessActiveReceipt(label);
+
+      if (!previous) {
+        setBulkReprocessEntries((entries) => [
+          ...entries,
+          {
+            id,
+            storeName: label,
+            diffs: [],
+            error: "レシート情報が見つからなかったよ",
+          },
+        ]);
+        failureCount += 1;
+        setBulkReprocessCurrentIndex(index + 1);
+        continue;
+      }
+
+      try {
+        const response = await fetch(`/api/receipts/${id}/reprocess`, {
+          method: "POST",
+        });
+
+        if (!response.ok) {
+          let message = "レシートの再解析に失敗しました";
+          try {
+            const errorBody = await response.json();
+            if (errorBody?.error) {
+              message = errorBody.error;
+            }
+          } catch {
+            // ignore parse errors
+          }
+          throw new Error(message);
+        }
+
+        const data = await response.json().catch(() => null);
+        const refreshed: ReceiptData | undefined = data?.receipt;
+
+        if (!refreshed) {
+          throw new Error("再解析結果を取得できなかったよ");
+        }
+
+        const diffs = buildReceiptDiffEntries(previous, refreshed);
+
+        setBulkReprocessEntries((entries) => [
+          ...entries,
+          {
+            id,
+            storeName: refreshed.store_name ?? label,
+            diffs,
+          },
+        ]);
+
+        successCount += 1;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "レシートの再解析に失敗しました";
+        setBulkReprocessEntries((entries) => [
+          ...entries,
+          {
+            id,
+            storeName: label,
+            diffs: [],
+            error: message,
+          },
+        ]);
+        failureCount += 1;
+      } finally {
+        setBulkReprocessCurrentIndex(index + 1);
+      }
+    }
+
+    setBulkReprocessActiveReceipt("");
+    setIsBulkReprocessing(false);
+    setBulkReprocessStatus("done");
+    await fetchReceipts();
+
+    if (failureCount > 0) {
+      toast.warning(
+        `AI再解析: ${successCount}件成功 / ${failureCount}件失敗したよ`
+      );
+    } else {
+      toast.success(`${successCount}件のレシートをAIで再解析したよ✨`);
+    }
+  };
+
   const handleFileUpload = async (files: File | File[]) => {
     const fileArray = Array.isArray(files) ? files : [files];
 
@@ -532,6 +801,18 @@ export default function ReceiptsPage() {
       }, 1200);
     }
   };
+
+  function handleBulkReprocessClose() {
+    if (bulkReprocessStatus === "running") {
+      return;
+    }
+    setBulkReprocessModalOpen(false);
+    setBulkReprocessEntries([]);
+    setBulkReprocessStatus("idle");
+    setBulkReprocessCurrentIndex(0);
+    setBulkReprocessTotal(0);
+    setBulkReprocessActiveReceipt("");
+  }
 
   const handleExport = async (format: ExportFormat) => {
     try {
@@ -663,6 +944,7 @@ export default function ReceiptsPage() {
 
   return (
     <div className="min-h-screen bg-washi-100">
+      {bulkReprocessModal}
       <header className="sticky top-0 z-30 border-b border-washi-300 bg-white/90 backdrop-blur">
         <div className="px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2 flex-1 min-w-[280px]">
@@ -973,6 +1255,19 @@ export default function ReceiptsPage() {
               >
                 {isListBulkSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save size={16} />}
                 選択レシートを更新
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkReprocess}
+                disabled={!hasSelection || isBulkReprocessing}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isBulkReprocessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles size={16} />
+                )}
+                AI再解析
               </button>
             </div>
           </section>
